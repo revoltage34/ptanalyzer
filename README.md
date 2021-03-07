@@ -8,6 +8,9 @@ Can be used for estimated time of an RTA speedrun.
 
 Time starts when you exit the elevator, and ends on final blow to Profit-Taker. (Tested to be accurate)
 
+**Approved tool by Warframe Speedrun!
+ https://www.speedrun.com/wf/resources** 
+
 Example output:
 ![Screenshot_1](https://user-images.githubusercontent.com/43719375/110228787-67b7ea80-7f36-11eb-8137-3733ccf689c2.png)
 
