@@ -17,5 +17,6 @@ Support multiple Profit-Taker run per EE.log
 
 **Limitation:**
 1. Cannot detect whether shield is destroyed or reset using Amp or by time limit, only able to detect shield change.
-2. Aborting a Profit-Taker Heist midway will break the run, at least until you complete the heist again.
-3. Might not be 100% accurate, still need more testing.
+2. If Profit-Taker regenerate on of it's legs, the run won't break, but break the timing about leg break and body break.
+3. Aborting a Profit-Taker Heist midway will break the run, at least until you complete the heist again.
+4. Might not be 100% accurate, still need more testing.
