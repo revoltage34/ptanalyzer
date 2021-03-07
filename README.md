@@ -1,5 +1,5 @@
 # Profit-Taker Analyzer
-Analyze Warframe Profit-Taker run from EE.log, marking important timestamps.
+Analyze Warframe Profit-Taker run from EE.log, marking important timestamps and total time elapsed.
 For example: time betweens shield changes and leg breaks.
 
 Time starts when you exit the elevator, and ends on final blow to Profit-Taker.
