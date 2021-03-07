@@ -3,6 +3,8 @@
 # https://github.com/revoltage34/ptanalyzer #
 #############################################
 
+version = "v1.1"
+
 import sys
         
 class Analyzer(object):
@@ -57,9 +59,11 @@ class Analyzer(object):
 
     def state_check(self, line):
         if self.state == len(self.stateText):
-            return True
+            return 1 #Run complete
         if self.state > 0 and 'SwitchShieldVulnerability' in line:
             self.damageType.append(self.dictDT[line.split()[-1]])
+        if self.state > 0 and 'jobId=/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour' in line:
+            return -1 #Run abort detected
         if self.state in self.stateLoop:
             if not self.stateText[self.state + 1] in line:
                 if self.stateText[self.state] in line:
@@ -71,16 +75,22 @@ class Analyzer(object):
             if self.state == 0:
                 self.stateTime[self.state] = 0
             else:
-                self.stateTime[self.state] = float(line.split(' ', 1)[0])
+                self.stateTime[self.state] = float(line.split(' ', 1)[0])             
             self.state += 1
-        return False
+        return 0 #Still running
     
-    
+def ErrorMsg():
+    print("\nAn error might have occured, please screenshot the error and report this along with your EE.log attached.")
+    input('Press ENTER to exit..')
+    sys.exit()
+
+
+print("Profit-Taker Analyzer " + version + " by ReVoltage#3425")
+print("https://github.com/revoltage34/ptanalyzer \n")
+
 try:
     droppedFile = sys.argv[1]
 except:
-    print("Profit-Taker Analyzer by ReVoltage#3425")
-    print("https://github.com/revoltage34/ptanalyzer \n")
     print("How to use:")
     print("Drag your EE.log to the .exe file or this terminal then hit ENTER")
     print("Support multiple Profit-Taker run per EE.log\n")
@@ -100,143 +110,148 @@ run = 0
 PT.append(Analyzer())
 RT.append([])
 RT_c.append([])
-
-for line in text:
-    if (PT[run].state_check(line)):
-        count = 0
-        start = PT[run].stateTime[1]
-        for t in PT[run].stateTime:
-            if count in PT[run].stateLoop:
-                temp = []
-                for x in t:
-                    temp.append(round(x - start, 3))
-                RT[run].append(temp)
-            else:
-                RT[run].append(round(t - start, 3))
-            count += 1
+try:
+    for line in text:
+        check = PT[run].state_check(line)
+        if check > 0:
+            count = 0
+            start = PT[run].stateTime[1]
+            for t in PT[run].stateTime:
+                if count in PT[run].stateLoop:
+                    temp = []
+                    for x in t:
+                        temp.append(round(x - start, 3))
+                    RT[run].append(temp)
+                else:
+                    RT[run].append(round(t - start, 3))
+                count += 1
+                
+            RT[run][4].pop()
+            RT[run][9].pop()
+            RT[run][13].pop()
+            RT[run][19].pop()
+                
+            count = 0
+            before = RT[run][1]
+            for t in RT[run]:
+                if count in PT[run].stateLoop:
+                    temp = []
+                    for x in t:
+                        temp.append(str(round(x - before, 3)))
+                        before = x
+                    RT_c[run].append(temp)
+                else:
+                    RT_c[run].append(str(round(t - before, 3)))
+                    before = t
+                count += 1
+                
+            #for t in RT_c[run]:
+                #print(str(t) + '\n')
+            found = True
             
-        RT[run][4].pop()
-        RT[run][9].pop()
-        RT[run][13].pop()
-        RT[run][19].pop()
-            
-        count = 0
-        before = RT[run][1]
-        for t in RT[run]:
-            if count in PT[run].stateLoop:
-                temp = []
-                for x in t:
-                    temp.append(str(round(x - before, 3)))
-                    before = x
-                RT_c[run].append(temp)
-            else:
-                RT_c[run].append(str(round(t - before, 3)))
-                before = t
-            count += 1
-            
-        #for t in RT_c[run]:
-            #print(str(t) + '\n')
-        found = True
-        
-        PT.append(Analyzer())
-        RT.append([])
-        RT_c.append([])
-        run += 1
+            PT.append(Analyzer())
+            RT.append([])
+            RT_c.append([])
+            run += 1
+        elif check < 0:
+            PT[run] = Analyzer()
+except:
+    ErrorMsg()
     
+try:
+    if (not found):
+        print("Profit-Taker run not found")
+    else:
+        for i in range(run):
+            shieldDT = 0
+            print("------------------------------------------------------------------------")
+        
+            print("Profit-Taker Run #" + str(i + 1) + " beaten in " + str(RT[i][-1]) + "s\n")
 
-if (not found):
-    print("Profit-Taker run not found")
-else:
-    print("Profit-Taker Analyzer by ReVoltage#3425")
-    print("https://github.com/revoltage34/ptanalyzer \n\n")
-    for i in range(run):
-        shieldDT = 0
-        print("------------------------------------------------------------------------")
-    
-        print("Profit-Taker Run #" + str(i + 1) + " beaten in " + str(RT[i][-1]) + "s\n")
-
-        print("Profit-Taker found in " + RT_c[i][2] + "s")
+            print("Profit-Taker found in " + RT_c[i][2] + "s")
+            
+            temp = ""
+            for t in RT_c[i][3]:
+                if temp != "":
+                    temp += " | "
+                temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
+                shieldDT += 1
+            print("Shield change: " + temp)
+            
+            temp = ""
+            for t in RT_c[i][4]:
+                if temp != "":
+                    temp += " | "
+                temp += str(t) + "s"
+            print("Leg break: " + temp)
+            
+            mins = str(int(RT[i][6]/60))
+            secs = str(int(RT[i][6]%60))
+            if RT[i][6]%60 < 10:
+                secs = "0" + secs
+            print("Body destroyed in " + RT_c[i][6] + "s [" + mins + ":" + secs + "]\n")
+            
+            print("4 Pylons destroyed in " + RT_c[i] [8] + "s (with ~7s pylon land delay)")
+            
+            temp = ""
+            for t in RT_c[i][9]:
+                if temp != "":
+                    temp += " | "
+                temp += str(t) + "s"
+            print("Leg break: " + temp)
+            
+            mins = str(int(RT[i][11]/60))
+            secs = str(int(RT[i][11]%60))
+            if RT[i][11]%60 < 10:
+                secs = "0" + secs
+            print("Body destroyed in " + RT_c[i][11] + "s [" + mins + ":" + secs + "]\n")
+            
+            temp = ""
+            for t in RT_c[i][12]:
+                if temp != "":
+                    temp += " | "
+                temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
+                shieldDT += 1
+            print("Shield change: " + temp)
+            
+            temp = ""
+            for t in RT_c[i][13]:
+                if temp != "":
+                    temp += " | "
+                temp += str(t) + "s"
+            print("Leg break: " + temp)
+            
+            mins = str(int(RT[i][15]/60))
+            secs = str(int(RT[i][15]%60))
+            if RT[i][15]%60 < 10:
+                secs = "0" + secs
+            print("Body destroyed in " + RT_c[i][15] + "s [" + mins + ":" + secs + "]\n")
+            
+            print("6 Pylons destroyed in " + RT_c[i] [17] + "s (with ~7s pylon land delay)")
+            
+            temp = ""
+            for t in RT_c[i][18]:
+                if temp != "":
+                    temp += " | "
+                temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
+                shieldDT += 1
+            print("Shield change: " + temp)
+            
+            temp = ""
+            for t in RT_c[i][19]:
+                if temp != "":
+                    temp += " | "
+                temp += str(t) + "s"
+            print("Leg break: " + temp)
+            
+            mins = str(int(RT[i][22]/60))
+            secs = str(int(RT[i][22]%60))
+            if RT[i][22]%60 < 10:
+                secs = "0" + secs
+            print("Body destroyed in " + str(round(float(RT_c[i][22]), 3)) + "s [" + mins + ":" + secs + "]")
+            
+            print("------------------------------------------------------------------------\n\n")
         
-        temp = ""
-        for t in RT_c[i][3]:
-            if temp != "":
-                temp += " | "
-            temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
-            shieldDT += 1
-        print("Shield change: " + temp)
-        
-        temp = ""
-        for t in RT_c[i][4]:
-            if temp != "":
-                temp += " | "
-            temp += str(t) + "s"
-        print("Leg break: " + temp)
-        
-        mins = str(int(RT[i][6]/60))
-        secs = str(int(RT[i][6]%60))
-        if RT[i][6]%60 < 10:
-            secs = "0" + secs
-        print("Body destroyed in " + RT_c[i][6] + "s [" + mins + ":" + secs + "]\n")
-        
-        print("4 Pylons destroyed in " + RT_c[i] [8] + "s (with ~7s pylon land delay)")
-        
-        temp = ""
-        for t in RT_c[i][9]:
-            if temp != "":
-                temp += " | "
-            temp += str(t) + "s"
-        print("Leg break: " + temp)
-        
-        mins = str(int(RT[i][11]/60))
-        secs = str(int(RT[i][11]%60))
-        if RT[i][11]%60 < 10:
-            secs = "0" + secs
-        print("Body destroyed in " + RT_c[i][11] + "s [" + mins + ":" + secs + "]\n")
-        
-        temp = ""
-        for t in RT_c[i][12]:
-            if temp != "":
-                temp += " | "
-            temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
-            shieldDT += 1
-        print("Shield change: " + temp)
-        
-        temp = ""
-        for t in RT_c[i][13]:
-            if temp != "":
-                temp += " | "
-            temp += str(t) + "s"
-        print("Leg break: " + temp)
-        
-        mins = str(int(RT[i][15]/60))
-        secs = str(int(RT[i][15]%60))
-        if RT[i][15]%60 < 10:
-            secs = "0" + secs
-        print("Body destroyed in " + RT_c[i][15] + "s [" + mins + ":" + secs + "]\n")
-        
-        print("6 Pylons destroyed in " + RT_c[i] [17] + "s (with ~7s pylon land delay)")
-        
-        temp = ""
-        for t in RT_c[i][18]:
-            if temp != "":
-                temp += " | "
-            temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
-            shieldDT += 1
-        print("Shield change: " + temp)
-        
-        temp = ""
-        for t in RT_c[i][19]:
-            if temp != "":
-                temp += " | "
-            temp += str(t) + "s"
-        print("Leg break: " + temp)
-        
-        mins = str(int(RT[i][22]/60))
-        secs = str(int(RT[i][22]%60))
-        if RT[i][22]%60 < 10:
-            secs = "0" + secs
-        print("Body destroyed in " + str(round(float(RT_c[i][22]), 3)) + "s [" + mins + ":" + secs + "]")
-        
-        print("------------------------------------------------------------------------\n\n")
-    
-input('Press ENTER to exit..')
+    input('Press ENTER to exit..')
+except:
+    ErrorMsg()
