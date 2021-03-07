@@ -2,6 +2,8 @@
 Analyze Warframe Profit-Taker run from EE.log, marking important timestamps and total time elapsed.
 For example: time betweens shield changes and leg breaks.
 
+**Only works correctly when you are the host when taking down Profit-Taker**
+
 Can be used for estimated time of an RTA speedrun.
 
 Time starts when you exit the elevator, and ends on final blow to Profit-Taker. (Tested to be accurate)
