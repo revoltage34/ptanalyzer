@@ -11,6 +11,8 @@ Example output:
 1. Drag your EE.log to the .exe file or the terminal then hit ENTER
 2. Your PT run(s) will be generated if it exists
 
+EE.log can be found in `C:\Users\<USERNAME>\AppData\Local\Warframe`
+
 Support multiple Profit-Taker run per EE.log
 
 **Limitation:**
