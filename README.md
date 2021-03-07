@@ -2,7 +2,9 @@
 Analyze Warframe Profit-Taker run from EE.log, marking important timestamps.
 
 How to use:
-Drag your EE.log to the .exe file or this terminal then hit ENTER
+1. Drag your EE.log to the .exe file or the terminal then hit ENTER
+2. Your PT run will be generated if it exists
+
 Support multiple Profit-Taker run per EE.log
 
 Limitation:
