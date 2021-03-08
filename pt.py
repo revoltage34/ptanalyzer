@@ -9,7 +9,7 @@ from sty import ef, fg, rs
 from colorama import init
 init()
 
-version = "v1.2"
+version = "v1.3"
      
 class Analyzer(object):
     def __init__(self):
@@ -170,12 +170,13 @@ try:
             run += 1
         elif check < 0:
             PT[run] = Analyzer()
+            PT[run].state = 1
 except:
     ErrorMsg()
     
 try:
     if (not found):
-        print("Profit-Taker run not found")
+        print(color("Profit-Taker run not found", fg.li_red))
     else:
         for i in range(run):
             shieldDT = 0
