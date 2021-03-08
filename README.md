@@ -12,7 +12,7 @@ Time starts when you exit the elevator, and ends on final blow to Profit-Taker. 
  https://www.speedrun.com/wf/resources** 
 
 Example output:
-![image](https://user-images.githubusercontent.com/43719375/110268381-21c15c00-7ff4-11eb-9538-43b0b93d6166.png)
+![image](https://user-images.githubusercontent.com/43719375/110268549-6c42d880-7ff4-11eb-80a9-f4a39b3a00ff.png)
 
 **How to use:**
 1. Drag your EE.log to the .exe file or the terminal then hit ENTER
