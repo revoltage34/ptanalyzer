@@ -26,3 +26,4 @@ Support multiple Profit-Taker run per EE.log
 1. Cannot detect whether shield is destroyed or reset using Amp or by time limit, only able to detect shield change.
 2. If Profit-Taker regenerate on of it's legs, the run won't break, but break the timing about leg break and body break.
 
+Feel free to contact me in Discord about this tool: **ReVoltage#3425**
