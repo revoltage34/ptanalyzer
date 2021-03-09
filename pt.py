@@ -9,13 +9,14 @@ from sty import ef, fg, rs
 from colorama import init
 init()
 
-version = "v1.3"
+version = "v1.4"
      
 class Analyzer(object):
     def __init__(self):
         self.state = 0
         self.nickname = False
         self.stateLoop = [3, 4, 9, 12, 13, 18, 19]
+        self.stateAdjustShield = [3, 18]
         self.stateText = [
         'jobId=/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour', #Get PT Heist
         #'Orb Fight - Starting find Orb phase', #PT Spawn
@@ -66,7 +67,10 @@ class Analyzer(object):
         if self.state == len(self.stateText):
             return 1 #Run complete
         if self.state > 0 and 'SwitchShieldVulnerability' in line:
-            self.damageType.append(self.dictDT[line.split()[-1]])
+            if self.state < 2 and len(self.damageType) == 1:
+                self.damageType[0] = self.dictDT[line.split()[-1]]
+            else:
+                self.damageType.append(self.dictDT[line.split()[-1]])
         if self.state > 0 and 'jobId=/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour' in line:
             return -1 #Run abort detected
         if not self.nickname and 'Player name is ' in line:
@@ -76,6 +80,8 @@ class Analyzer(object):
                 if self.stateText[self.state] in line:
                     self.stateTime[self.state].append(float(line.split(' ', 1)[0]))
             else:
+                if self.state in self.stateAdjustShield:
+                    self.stateTime[self.state].append(self.stateTime[self.state][-1])
                 self.state += 1
                 self.state_check(line)
         elif self.stateText[self.state] in line:
@@ -144,6 +150,9 @@ try:
             RT[run][9].pop()
             RT[run][13].pop()
             RT[run][19].pop()
+            
+            RT[run][12].pop(0)
+            RT[run][12].append(RT[run][12][-1])
                 
             count = 0
             before = RT[run][1]
@@ -195,12 +204,18 @@ try:
             if RT[i][6]%60 < 10:
                 secs = "0" + secs
             print(color("> Phase 1 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
+            
             temp = ""
+            scount = 1
             for t in RT_c[i][3]:
                 if temp != "":
                     temp += " | "
-                temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
+                if scount == len(RT_c[i][3]):
+                    temp += PT[i].damageType[shieldDT] + " ?s"
+                else:
+                    temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
                 shieldDT += 1
+                scount += 1
             print(color(" Shield change: ", fg.white) + fg.li_yellow + temp)
             
             temp = ""
@@ -237,12 +252,18 @@ try:
             if RT[i][15]%60 < 10:
                 secs = "0" + secs
             print(color("> Phase 3 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
+            
             temp = ""
+            scount = 1
             for t in RT_c[i][12]:
                 if temp != "":
                     temp += " | "
-                temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
+                if scount == len(RT_c[i][12]):
+                    temp += PT[i].damageType[shieldDT] + " ?s"
+                else:
+                    temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
                 shieldDT += 1
+                scount += 1
             print(color(" Shield change: ", fg.white) + fg.li_yellow + temp)
             
             temp = ""
@@ -263,11 +284,16 @@ try:
             print(color(" 6 Pylons destroyed in " + RT_c[i] [17] + "s", fg.white))
             
             temp = ""
+            scount = 1
             for t in RT_c[i][18]:
                 if temp != "":
                     temp += " | "
-                temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
+                if scount == len(RT_c[i][18]):
+                    temp += PT[i].damageType[shieldDT] + " ?s"
+                else:
+                    temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
                 shieldDT += 1
+                scount += 1
             print(color(" Shield change: ", fg.white) + fg.li_yellow + temp)
             
             temp = ""
