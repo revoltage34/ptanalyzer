@@ -10,6 +10,8 @@ import sys
 import os
 from collections import defaultdict
 from math import nan, isnan
+from queue import Queue
+from time import sleep
 from typing import Iterator, Callable
 
 from sty import fg, rs
@@ -17,7 +19,7 @@ from colorama import init
 
 init()
 
-version = "v1.4"
+version = "v2.0"
 
 dt_dict = {
     'DT_IMPACT': "Impact",
@@ -99,7 +101,7 @@ class RelRun:
 
         for i in [1, 2, 3, 4]:
             self.pretty_print_phase(i)
-        
+
         self.pretty_print_sum_of_parts()
 
         print(f'{fg.white}{"-" * 72}\n\n')  # footer
@@ -221,13 +223,13 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
     while True:  # match exists for phases 1-3, kill_sequence for phase 4.
         line, match = skip_until_one_of(log, [lambda line: Constants.SHIELD_SWITCH in line,
                                               lambda line: Constants.LEG_KILL in line,
-                                              lambda line: Constants.BODY_VULNERABLE in line,  # also phase 4 end
+                                              lambda line: Constants.BODY_VULNERABLE in line,  # is also phase 4 end
                                               lambda line: Constants.BODY_KILLED in line,
                                               lambda line: Constants.PYLONS_LAUNCHED in line,
                                               lambda line: Constants.PHASE_1_START in line,
                                               lambda line: phase != Constants.FINAL_PHASE and \
                                                            Constants.PHASE_ENDS[phase] in line,
-                                              lambda line: Constants.HEIST_ABORT in line])
+                                              lambda line: Constants.HEIST_START in line])  # Functions as abort as well
         if match == 0:
             run.shields[phase].append(shield_from_line(line))
         elif match == 1:
@@ -256,9 +258,17 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
             raise RunAbort()
 
 
-def read_run(log: Iterator[str]) -> AbsRun:
+def read_run(log: Iterator[str], aborted=False) -> AbsRun:
+    """
+    Reads a run.
+    :param log: Iterator of the ee.log, expects a line with every next() call
+    :param aborted: Indicate whether the start of this run indicates a previous run that was aborted.
+    Necessary to properly initialize this run.
+    :return: Absolute timings from the fight.
+    """
     # Find heist load.
-    skip_until_one_of(log, [lambda line: Constants.HEIST_START in line])
+    if not aborted:  # Only demand the heist load if the run doesn't indicate another was aborted.
+        skip_until_one_of(log, [lambda line: Constants.HEIST_START in line])
 
     nickname = skip_until_one_of(log, [lambda line: Constants.NICKNAME in line])[0].split()[-1]
 
@@ -272,14 +282,16 @@ def read_run(log: Iterator[str]) -> AbsRun:
     return run
 
 
-def get_file() -> str:
+def get_file() -> Iterator[str]:
     try:
         dropped_file = sys.argv[1]
+        return open(dropped_file, 'r')
     except IndexError:
-        print(r'No file given. Defaulting to %LOCALAPPDATA%\Warframe\EE.log.')
+        print(r'Analyzing %LOCALAPPDATA%\Warframe\EE.log.')
         print('Note that you can analyze another file by dragging it into the exe file.')
         dropped_file = os.getenv('LOCALAPPDATA') + r'\Warframe\EE.log'
-    return dropped_file
+        print('The file is being followed, meaning that runs will appear as you play.')
+        return follow(dropped_file)
 
 
 def error_msg():
@@ -291,19 +303,44 @@ def error_msg():
     sys.exit()
 
 
+def follow(filename: str):
+    """generator function that yields new lines in a file"""
+    known_size = os.stat(filename).st_size
+    file = open(filename, "r")
+
+    # Start infinite loop
+    cur_line = []  # Store multiple parts of the same line to deal with the logger comitting incomplete lines.
+    while True:
+        if (new_size := os.stat(filename).st_size) < known_size:
+            print('Restart detected.')
+            file = open(filename, 'r')
+            print('Succesfully reconnected to ee.log. Now listening for new Profit-Taker runs.')
+        known_size = new_size
+
+        # Yield lines until the last line of file and follow the end on a delay
+        while line := file.readline():
+            cur_line.append(line)  # Store whatever is found.
+            if line[-1] == '\n':  # On newline, commit the line
+                yield ''.join(cur_line)
+                cur_line = []
+            else:  # No newline means we wait for more input before we yield it.
+                sleep(1)
+
+
 def main():
-    dropped_file = get_file()
-    with open(dropped_file, 'r') as it:
-        try:
-            run_nr = 1
-            while True:
-                try:
-                    read_run(it).to_rel().pretty_print(run_nr)
-                    run_nr += 1
-                except RunAbort:
-                    pass
-        except LogEnd:
-            input(f'{rs.fg}Press ENTER to exit...')
+    it = get_file()
+    try:
+        run_nr = 1
+        aborted = False
+        while True:
+            try:
+                read_run(it, aborted).to_rel().pretty_print(run_nr)
+                run_nr += 1
+                aborted = False
+            except RunAbort:
+                aborted = True
+    except LogEnd:
+        input(f'{rs.fg}Press ENTER to exit...')
 
 
 if __name__ == "__main__":

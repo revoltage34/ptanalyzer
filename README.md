@@ -15,7 +15,7 @@ Example output:
 ![image](https://user-images.githubusercontent.com/43719375/110268549-6c42d880-7ff4-11eb-80a9-f4a39b3a00ff.png)
 
 **How to use:**  
-1. A: Simply run the program and have it use your default EE.log  
+1. A: Simply run the program and have it use your default EE.log. Both old and new Profit-Taker runs will be analyzed.   
    B: Alternatively, drag your EE.log to the .exe file or the terminal, then hit ENTER
 2. Your PT run(s) will be generated if the log file contains completed Profit-Taker runs.
 
