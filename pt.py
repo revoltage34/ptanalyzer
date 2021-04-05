@@ -105,6 +105,30 @@ def error_msg():
     sys.exit()
 
 
+def print_shield(shield_dt: int, run_nr: int, index: int):
+    temp = ""
+    scount = 1
+    for t in RT_c[run_nr][index]:
+        if temp != "":
+            temp += " | "
+        if scount == len(RT_c[run_nr][index]):
+            temp += PT[i].damage_type[shield_dt] + " ?s"
+        else:
+            temp += PT[i].damage_type[shield_dt] + " " + str(t) + "s"
+        shield_dt += 1
+        scount += 1
+
+    tempsum = sum((float(time) for time in RT_c[run_nr][index]))
+    print(color(" Shield change: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
+    return shield_dt
+
+
+def print_leg(run_nr: int, index: int) -> None:
+    temp = ' | '.join([f'{time}s' for time in RT_c[run_nr][index]])
+    tempsum = sum((float(time) for time in RT_c[run_nr][index]))
+    print(color(f" Leg break: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
+
+
 print(fg.cyan + "Profit-Taker Analyzer " + version + " by " + fg.li_cyan + "ReVoltage#3425")
 print(color("https://github.com/revoltage34/ptanalyzer \n", fg.white))
 
@@ -188,7 +212,7 @@ try:
             PT[run].state = 1
 except:
     error_msg()
-    
+
 try:
     if not found:
         print(color("Profit-Taker run not found", fg.li_red))
@@ -205,116 +229,51 @@ try:
             print(color("From elevator to Profit-Taker took " + RT_c[i][2] + "s\n", fg.li_red))
             
             # --PHASE 1-- #
-            mins = str(int(RT[i][6]/60))
-            secs = str(int(RT[i][6]%60))
-            if RT[i][6]%60 < 10:
+            mins = str(int(RT[i][6] / 60))
+            secs = str(int(RT[i][6] % 60))
+            if RT[i][6] % 60 < 10:
                 secs = "0" + secs
             print(color("> Phase 1 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
             
-            temp = ""
-            scount = 1
-            for t in RT_c[i][3]:
-                if temp != "":
-                    temp += " | "
-                if scount == len(RT_c[i][3]):
-                    temp += PT[i].damage_type[shieldDT] + " ?s"
-                else:
-                    temp += PT[i].damage_type[shieldDT] + " " + str(t) + "s"
-                shieldDT += 1
-                scount += 1
-            tempsum = sum((float(time) for time in RT_c[i][3]))
-            print(color(" Shield change: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
-            
-            temp = ""
-            for t in RT_c[i][4]:
-                if temp != "":
-                    temp += " | "
-                temp += str(t) + "s"
-            tempsum = sum((float(time) for time in RT_c[i][4]))
-            print(color(f" Leg break: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
-            
-            
+            shieldDT = print_shield(shieldDT, i, 3)
+            print_leg(i, 4)
+
             print(color(" Body destroyed in " + RT_c[i][6] + "s\n", fg.white))
             
             # --PHASE 2-- #
-            mins = str(int(RT[i][11]/60))
-            secs = str(int(RT[i][11]%60))
-            if RT[i][11]%60 < 10:
+            mins = str(int(RT[i][11] / 60))
+            secs = str(int(RT[i][11] % 60))
+            if RT[i][11] % 60 < 10:
                 secs = "0" + secs
             print(color("> Phase 2 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
             print(color(" 4 Pylons destroyed in " + RT_c[i] [8] + "s", fg.white))
-            
-            temp = ""
-            for t in RT_c[i][9]:
-                if temp != "":
-                    temp += " | "
-                temp += str(t) + "s"
-            tempsum = sum((float(time) for time in RT_c[i][9]))
-            print(color(" Leg break: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
-            
+
+            print_leg(i, 9)
             
             print(color(" Body destroyed in " + RT_c[i][11] + "s\n", fg.white))
             
             # --PHASE 3-- #
-            mins = str(int(RT[i][15]/60))
-            secs = str(int(RT[i][15]%60))
-            if RT[i][15]%60 < 10:
+            mins = str(int(RT[i][15] / 60))
+            secs = str(int(RT[i][15] % 60))
+            if RT[i][15] % 60 < 10:
                 secs = "0" + secs
             print(color("> Phase 3 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
-            
-            temp = ""
-            scount = 1
-            for t in RT_c[i][12]:
-                if temp != "":
-                    temp += " | "
-                if scount == len(RT_c[i][12]):
-                    temp += PT[i].damage_type[shieldDT] + " ?s"
-                else:
-                    temp += PT[i].damage_type[shieldDT] + " " + str(t) + "s"
-                shieldDT += 1
-                scount += 1
-            tempsum = sum((float(time) for time in RT_c[i][12]))
-            print(color(" Shield change: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
-            
-            temp = ""
-            for t in RT_c[i][13]:
-                if temp != "":
-                    temp += " | "
-                temp += str(t) + "s"
-            tempsum = sum((float(time) for time in RT_c[i][13]))
-            print(color(" Leg break: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
+
+            shieldDT = print_shield(shieldDT, i, 12)
+            print_leg(i, 13)
             
             print(color(" Body destroyed in " + RT_c[i][15] + "s\n", fg.white))
             
             # --PHASE 4-- #
-            mins = str(int(RT[i][22]/60))
-            secs = str(int(RT[i][22]%60))
-            if RT[i][22]%60 < 10:
+            mins = str(int(RT[i][22] / 60))
+            secs = str(int(RT[i][22] % 60))
+            if RT[i][22] % 60 < 10:
                 secs = "0" + secs
             print(color("> Phase 4 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
-            print(color(" 6 Pylons destroyed in " + RT_c[i] [17] + "s", fg.white))
-            
-            temp = ""
-            scount = 1
-            for t in RT_c[i][18]:
-                if temp != "":
-                    temp += " | "
-                if scount == len(RT_c[i][18]):
-                    temp += PT[i].damage_type[shieldDT] + " ?s"
-                else:
-                    temp += PT[i].damage_type[shieldDT] + " " + str(t) + "s"
-                shieldDT += 1
-                scount += 1
-            tempsum = sum((float(time) for time in RT_c[i][18]))
-            print(color(" Shield change: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
-            
-            temp = ""
-            for t in RT_c[i][19]:
-                if temp != "":
-                    temp += " | "
-                temp += str(t) + "s"
-            tempsum = sum((float(time) for time in RT_c[i][19]))
-            print(color(" Leg break: ", fg.white) + color(f'{tempsum:.3f}', fg.li_green) + ' - ' + fg.li_yellow + temp)
+            print(color(" 6 Pylons destroyed in " + RT_c[i][17] + "s", fg.white))
+
+            shieldDT = print_shield(shieldDT, i, 18)
+            print_leg(i, 19)
             
             print(color(" Body destroyed in " + RT_c[i][22] + "s\n", fg.white))
             
