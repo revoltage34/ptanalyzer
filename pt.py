@@ -134,7 +134,7 @@ class RelRun:
         pylon_sum = sum(self.pylon_dur.values())
         total_sum = shield_sum + leg_sum + body_sum + pylon_sum
 
-        print(f'{fg.li_cyan}> Sum of parts [{int(total_sum / 60)}:{int(total_sum % 60):02d}]')
+        print(f'{fg.li_green}> Sum of parts {fg.li_cyan}[{int(total_sum / 60)}:{int(total_sum % 60):02d}]')
         print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:7.3f}s')
         print(f'{fg.white} Leg Break:\t{fg.li_green}{leg_sum:7.3f}s')
         print(f'{fg.white} Body Killed:\t{fg.li_green}{body_sum:7.3f}s')
