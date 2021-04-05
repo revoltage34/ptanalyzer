@@ -12,7 +12,7 @@ Time starts when you exit the elevator, and ends on the final blow to Profit-Tak
  https://www.speedrun.com/wf/resources** 
 
 Example output:
-![image](https://user-images.githubusercontent.com/43719375/110268549-6c42d880-7ff4-11eb-80a9-f4a39b3a00ff.png)
+![image](https://user-images.githubusercontent.com/24490028/113636080-2704db80-9672-11eb-8364-3ac6dc652f28.png)
 
 **How to use:**  
 1. A: Simply run the program and have it use your default EE.log. Both old and new Profit-Taker runs will be analyzed.   
