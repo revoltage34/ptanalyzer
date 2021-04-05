@@ -2,6 +2,7 @@
 # Profit-Taker Analyzer by ReVoltage#3425   #
 # Rewritten by Iterniam#5829                #
 # https://github.com/revoltage34/ptanalyzer #
+# Requires Python 3.9                       #
 #############################################
 
 import traceback
@@ -98,29 +99,53 @@ class RelRun:
 
         for i in [1, 2, 3, 4]:
             self.pretty_print_phase(i)
+        
+        self.pretty_print_sum_of_parts()
 
         print(f'{fg.white}{"-" * 72}\n\n')  # footer
 
     def pretty_print_phase(self, phase: int):
         white_dash = f'{fg.white} - '
         print(f'{fg.li_green}> Phase {phase} {fg.li_cyan}'
-              f'[{int(self.phase_durations[phase] / 60)}:{int(self.phase_durations[phase] % 60)}]')
+              f'[{int(self.phase_durations[phase] / 60)}:{int(self.phase_durations[phase] % 60):02d}]')
 
         if phase in self.shields:
             shield_sum = sum(time for _, time in self.shields[phase] if not isnan(time))
             shield_str = f'{fg.white} | '.join((f'{fg.li_yellow}{s_type} {"?" if isnan(s_time) else f"{s_time:.3f}"}s'
                                                 for s_type, s_time in self.shields[phase]))
-            print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:6.3f}s{white_dash}{fg.li_yellow}{shield_str}')
+            print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:7.3f}s{white_dash}{fg.li_yellow}{shield_str}')
 
         normal_legs = [f'{fg.li_yellow}{time:.3f}s' for time in self.legs[phase][:4]]
         leg_regen = [f'{fg.red}{time:.3f}s' for time in self.legs[phase][4:]]
         leg_str = f"{fg.white} | ".join(normal_legs + leg_regen)
-        print(f'{fg.white} Leg break:\t{fg.li_green}{sum(self.legs[phase]):6.3f}s{white_dash}{leg_str}')
-        print(f'{fg.white} Body killed:\t{fg.li_green}{self.body_dur[phase]:6.3f}s')
+        print(f'{fg.white} Leg break:\t{fg.li_green}{sum(self.legs[phase]):7.3f}s{white_dash}{leg_str}')
+        print(f'{fg.white} Body killed:\t{fg.li_green}{self.body_dur[phase]:7.3f}s')
 
         if phase in self.pylon_dur:
-            print(f'{fg.white} Pylons:\t{fg.li_green}{self.pylon_dur[phase]:6.3f}s')
+            print(f'{fg.white} Pylons:\t{fg.li_green}{self.pylon_dur[phase]:7.3f}s')
         print('')  # to print an enter
+
+    def pretty_print_sum_of_parts(self):
+        shield_sum = sum(time for times in self.shields.values() for _, time in times if not isnan(time))
+        leg_sum = sum(time for times in self.legs.values() for time in times)
+        body_sum = sum(self.body_dur.values())
+        pylon_sum = sum(self.pylon_dur.values())
+        total_sum = shield_sum + leg_sum + body_sum + pylon_sum
+
+        print(f'{fg.li_cyan}> Sum of parts [{int(total_sum / 60)}:{int(total_sum % 60):02d}]')
+        print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:7.3f}s')
+        print(f'{fg.white} Leg Break:\t{fg.li_green}{leg_sum:7.3f}s')
+        print(f'{fg.white} Body Killed:\t{fg.li_green}{body_sum:7.3f}s')
+        print(f'{fg.white} Pylons:\t{fg.li_green}{pylon_sum:7.3f}s')
+
+    def sum_all_times(self) -> int:
+        sum_ = 0
+        for phase in [1, 2, 3, 4]:
+            sum_ += sum(time for _, time in self.shields[phase] if not isnan(time))
+            sum_ += sum(self.legs[phase])
+        sum_ += sum(self.body_dur.values())
+        sum_ += sum(self.pylon_dur.values())
+        return sum_
 
 
 class AbsRun:
