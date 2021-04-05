@@ -11,7 +11,7 @@ Time starts when you exit the elevator, and ends on the final blow to Profit-Tak
 **Approved tool by Warframe Speedrun!
  https://www.speedrun.com/wf/resources** 
 
-Example output:
+Example output:  
 ![image](https://user-images.githubusercontent.com/24490028/113636080-2704db80-9672-11eb-8364-3ac6dc652f28.png)
 
 **How to use:**  
