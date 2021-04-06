@@ -10,9 +10,8 @@ import sys
 import os
 from collections import defaultdict
 from math import nan, isnan
-from queue import Queue
 from time import sleep
-from typing import Iterator, Callable
+from typing import Iterator, Callable, Literal
 
 from sty import fg, rs
 from colorama import init
@@ -69,9 +68,21 @@ def color(text: str, col: str) -> str:
     return col + text + rs.fg
 
 
+def time_str(seconds: float, format_: Literal['brackets', 'units']) -> str:
+    if format_ == 'brackets':
+        return f'[{int(seconds / 60)}:{int(seconds % 60):02d}]'
+    elif format_ == 'units':
+        if seconds < 60:
+            return f'{int(seconds % 60)}s {int(seconds % 1 * 1000)}ms'
+        else:
+            return f'{int(seconds / 60)}m {int(seconds % 60):2d}s {int(seconds % 1 * 1000):3d}ms'
+    raise ValueError(f"Expected format_ to be 'brackets' or 'units' but was {format_}.")
+
+
 class RelRun:
 
     def __init__(self,
+                 run_nr: int,
                  nickname: str,
                  pt_found: float,
                  phase_durations: dict[int, float],
@@ -79,6 +90,7 @@ class RelRun:
                  legs: dict[int, list[float]],
                  body_dur: dict[int, float],
                  pylon_dur: dict[int, float]):
+        self.run_nr = run_nr
         self.nickname = nickname
         self.pt_found = pt_found
         self.phase_durations = phase_durations
@@ -86,16 +98,19 @@ class RelRun:
         self.legs = legs
         self.body_dur = body_dur
         self.pylon_dur = pylon_dur
+        self.best_run = False
+        self.best_run_yet = False
 
     def __str__(self):
         return '\n'.join((f'{key}: {val}' for key, val in vars(self).items()))
 
-    def pretty_print(self, run_nr: int = 1):
+    def length(self):
+        return self.phase_durations[4]
+
+    def pretty_print(self):
         print(color('-' * 72, fg.white))  # header
 
-        tot_time = self.phase_durations[4]
-        print(f'{fg.cyan}Profit-Taker Run #{run_nr} by {fg.li_cyan}{self.nickname}{fg.cyan} cleared in '
-              f'{fg.li_cyan}{int(tot_time / 60)}m {int(tot_time % 60)}s {int(tot_time % 1 * 1000)}ms\n')
+        self.pretty_print_run_summary()
 
         print(f'{fg.li_red}From elevator to Profit-Taker took {self.pt_found:.3f}s.\n')
 
@@ -106,10 +121,18 @@ class RelRun:
 
         print(f'{fg.white}{"-" * 72}\n\n')  # footer
 
+    def pretty_print_run_summary(self):
+        run_info = f'{fg.cyan}Profit-Taker Run #{self.run_nr} by {fg.li_cyan}{self.nickname}{fg.cyan} cleared in ' \
+                   f'{fg.li_cyan}{time_str(self.length(), "units")}'
+        if self.best_run:
+            run_info += f'{fg.white} - {fg.li_magenta}Best run!'
+        elif self.best_run_yet:
+            run_info += f'{fg.white} - {fg.li_magenta}Best run yet!'
+        print(f'{run_info}\n')
+
     def pretty_print_phase(self, phase: int):
         white_dash = f'{fg.white} - '
-        print(f'{fg.li_green}> Phase {phase} {fg.li_cyan}'
-              f'[{int(self.phase_durations[phase] / 60)}:{int(self.phase_durations[phase] % 60):02d}]')
+        print(f'{fg.li_green}> Phase {phase} {fg.li_cyan}{time_str(self.phase_durations[phase], "brackets")}')
 
         if phase in self.shields:
             shield_sum = sum(time for _, time in self.shields[phase] if not isnan(time))
@@ -134,7 +157,7 @@ class RelRun:
         pylon_sum = sum(self.pylon_dur.values())
         total_sum = shield_sum + leg_sum + body_sum + pylon_sum
 
-        print(f'{fg.li_green}> Sum of parts {fg.li_cyan}[{int(total_sum / 60)}:{int(total_sum % 60):02d}]')
+        print(f'{fg.li_green}> Sum of parts {fg.li_cyan}{time_str(total_sum, "brackets")}')
         print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:7.3f}s')
         print(f'{fg.white} Leg Break:\t{fg.li_green}{leg_sum:7.3f}s')
         print(f'{fg.white} Body Killed:\t{fg.li_green}{body_sum:7.3f}s')
@@ -152,7 +175,8 @@ class RelRun:
 
 class AbsRun:
 
-    def __init__(self, nickname: str, heist_start: float):
+    def __init__(self, run_nr: int, nickname: str, heist_start: float):
+        self.run_nr = run_nr
         self.nickname = nickname
         self.heist_start = heist_start
         self.pt_found = 0.0
@@ -197,7 +221,7 @@ class AbsRun:
             # Set phase duration
             phase_durations[phase] = previous_value - self.heist_start
 
-        return RelRun(self.nickname, pt_found, phase_durations, shields, legs, body_dur, pylon_dur)
+        return RelRun(self.run_nr, self.nickname, pt_found, phase_durations, shields, legs, body_dur, pylon_dur)
 
 
 def time_from_line(line: str) -> float:
@@ -258,10 +282,11 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
             raise RunAbort()
 
 
-def read_run(log: Iterator[str], aborted=False) -> AbsRun:
+def read_run(log: Iterator[str], run_nr: int, aborted=False) -> AbsRun:
     """
     Reads a run.
-    :param log: Iterator of the ee.log, expects a line with every next() call
+    :param log: Iterator of the ee.log, expects a line with every next() call.
+    :param run_nr: The number assigned to this run if it does not end up being aborted.
     :param aborted: Indicate whether the start of this run indicates a previous run that was aborted.
     Necessary to properly initialize this run.
     :return: Absolute timings from the fight.
@@ -274,7 +299,7 @@ def read_run(log: Iterator[str], aborted=False) -> AbsRun:
 
     # Find heist start
     line, _ = skip_until_one_of(log, [lambda line: Constants.ELEVATOR_EXIT in line])
-    run = AbsRun(nickname, time_from_line(line))
+    run = AbsRun(run_nr, nickname, time_from_line(line))
 
     for phase in [1, 2, 3, 4]:
         register_phase(log, run, phase)  # Adds information to run
@@ -282,16 +307,23 @@ def read_run(log: Iterator[str], aborted=False) -> AbsRun:
     return run
 
 
-def get_file() -> Iterator[str]:
+def print_summary(runs: list[RelRun]):
+    best_run = min(runs, key=lambda run: run.length())
+    print(f'{fg.li_green}Best run:\t'
+          f'{fg.li_cyan}{time_str(best_run.length(), "units")} '
+          f'{fg.cyan}(Run #{best_run.run_nr})')
+    print(f'{fg.li_green}Average time:\t'
+          f'{fg.li_cyan}{time_str(sum((run.length() for run in runs)) / len(runs), "units")}\n\n')
+
+
+def get_file() -> tuple[str, bool]:  # bool -> dropped
     try:
-        dropped_file = sys.argv[1]
-        return open(dropped_file, 'r')
+        return sys.argv[1], True
     except IndexError:
         print(r'Analyzing %LOCALAPPDATA%\Warframe\EE.log.')
         print('Note that you can analyze another file by dragging it into the exe file.')
-        dropped_file = os.getenv('LOCALAPPDATA') + r'\Warframe\EE.log'
         print('The file is being followed, meaning that runs will appear as you play.')
-        return follow(dropped_file)
+        return os.getenv('LOCALAPPDATA') + r'\Warframe\EE.log', False
 
 
 def error_msg():
@@ -312,7 +344,7 @@ def follow(filename: str):
     cur_line = []  # Store multiple parts of the same line to deal with the logger comitting incomplete lines.
     while True:
         if (new_size := os.stat(filename).st_size) < known_size:
-            print('Restart detected.')
+            print(f'{fg.white}Restart detected.')
             file = open(filename, 'r')
             print('Succesfully reconnected to ee.log. Now listening for new Profit-Taker runs.')
         known_size = new_size
@@ -327,26 +359,63 @@ def follow(filename: str):
                 sleep(1)
 
 
+def analyze_log(dropped_file: str):
+    with open(dropped_file, 'r') as it:
+        try:
+            runs = []
+            aborted = False
+            while True:
+                try:
+                    runs.append(read_run(it, len(runs) + 1, aborted).to_rel())
+                    aborted = False
+                except RunAbort:
+                    aborted = True
+        except LogEnd:
+            pass
+
+    best_run = min(runs, key=lambda run: run.length())
+    best_run.best_run = True
+    for run in runs:
+        run.pretty_print()
+
+    print_summary(runs)
+
+    input(f'{rs.fg}Press ENTER to exit...')
+
+
+def follow_log(filename: str):
+    it = follow(filename)
+    best_time = float('inf')
+    runs = []
+    aborted = False
+    while True:
+        try:
+            run = read_run(it, len(runs) + 1, aborted).to_rel()
+            runs.append(run)
+            aborted = False
+
+            if run.length() < best_time:
+                best_time = run.length()
+                run.best_run_yet = True
+            run.pretty_print()
+            print_summary(runs)
+        except RunAbort:
+            aborted = True
+
+
 def main():
-    it = get_file()
-    try:
-        run_nr = 1
-        aborted = False
-        while True:
-            try:
-                read_run(it, aborted).to_rel().pretty_print(run_nr)
-                run_nr += 1
-                aborted = False
-            except RunAbort:
-                aborted = True
-    except LogEnd:
-        input(f'{rs.fg}Press ENTER to exit...')
-
-
-if __name__ == "__main__":
     print(f'{fg.cyan}Profit-Taker Analyzer {version} by {fg.li_cyan}ReVoltage#3425{fg.cyan}, rewritten by '
           f'{fg.li_cyan}Iterniam#5829.')
     print(color("https://github.com/revoltage34/ptanalyzer \n", fg.white))
+
+    filename, dropped = get_file()
+    if dropped:
+        analyze_log(filename)
+    else:
+        follow_log(filename)
+
+
+if __name__ == "__main__":
     # noinspection PyBroadException
     try:
         main()
