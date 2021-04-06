@@ -344,7 +344,7 @@ def follow(filename: str):
     cur_line = []  # Store multiple parts of the same line to deal with the logger comitting incomplete lines.
     while True:
         if (new_size := os.stat(filename).st_size) < known_size:
-            print('Restart detected.')
+            print(f'{fg.white}Restart detected.')
             file = open(filename, 'r')
             print('Succesfully reconnected to ee.log. Now listening for new Profit-Taker runs.')
         known_size = new_size
