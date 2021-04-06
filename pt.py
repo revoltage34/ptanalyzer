@@ -1,312 +1,354 @@
 #############################################
 # Profit-Taker Analyzer by ReVoltage#3425   #
+# Rewritten by Iterniam#5829                #
 # https://github.com/revoltage34/ptanalyzer #
+# Requires Python 3.9                       #
 #############################################
 
 import traceback
 import sys
-from sty import ef, fg, rs
+import os
+from collections import defaultdict
+from math import nan, isnan
+from queue import Queue
+from time import sleep
+from typing import Iterator, Callable
+
+from sty import fg, rs
 from colorama import init
+
 init()
 
-version = "v1.4"
-     
-class Analyzer(object):
-    def __init__(self):
-        self.state = 0
-        self.nickname = False
-        self.stateLoop = [3, 4, 9, 12, 13, 18, 19]
-        self.stateAdjustShield = [3, 18]
-        self.stateText = [
-        'jobId=/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour', #Get PT Heist
-        #'Orb Fight - Starting find Orb phase', #PT Spawn
-        'EidolonMP.lua: EIDOLONMP: Avatar left the zone', #Player leave elevator
-        'Orb Fight - Starting first attack Orb phase', #PT found
-        'SwitchShieldVulnerability', #Shield break/change
-        'DestroyLeg', #Leg break
-        'StartVulnerable', #2s body vulnerable delay
-        'Orb Fight - Starting first Destroy Pylons phase', #Body destroyed
-        'Pylon launch complete', #Pylon launched
-        'Orb Fight - Starting second attack Orb phase', #Pylon destroyed
-        'DestroyLeg', #Leg break
-        'StartVulnerable', #2s body vulnerable delay
-        'Orb Fight - Starting third attack Orb phase', #Body destroyed
-        'SwitchShieldVulnerability', #Shield break/change
-        'DestroyLeg', #Leg break
-        'StartVulnerable', #2s body vulnerable delay
-        'Orb Fight - Starting third Destroy Pylons phase', #Body destroyed
-        'Pylon launch complete', #Pylon launched
-        'Orb Fight - Starting final attack Orb phase', #Pylon destroyed
-        'SwitchShieldVulnerability', #Shield break/change
-        'DestroyLeg', #Leg break
-        'StartVulnerable', #2s body vulnerable delay
-        'StartVulnerable', #Filler
-        'StartVulnerable' #Finish
-        ]
-        self.dictDT = {
-        'DT_IMPACT' : "Impact",
-        'DT_PUNCTURE' : "Puncture",
-        'DT_SLASH' : "Slash",
+version = "v2.0"
 
-        'DT_FREEZE' : "Cold",
-        'DT_FIRE' : "Heat",
-        'DT_POISON' : "Toxin",
-        'DT_ELECTRICITY' : "Electricity",
+dt_dict = {
+    'DT_IMPACT': "Impact",
+    'DT_PUNCTURE': "Puncture",
+    'DT_SLASH': "Slash",
 
-        'DT_GAS' : "Gas",
-        'DT_VIRAL' : "Viral",
-        'DT_MAGNETIC' : "Magnetic",
-        'DT_RADIATION' : "Radiation",
-        'DT_CORROSIVE' : "Corrosive",
-        'DT_EXPLOSION' : "Blast"
-        }
-        self.damageType = []
-        self.stateTime = [0, 0, 0, [], [], 0, 0, 0, 0, [], 0, 0, [], [], 0, 0, 0, 0, [], [], 0, 0, 0]
+    'DT_FREEZE': "Cold",
+    'DT_FIRE': "Heat",
+    'DT_POISON': "Toxin",
+    'DT_ELECTRICITY': "Electricity",
 
-    def state_check(self, line):
-        if self.state == len(self.stateText):
-            return 1 #Run complete
-        if self.state > 0 and 'SwitchShieldVulnerability' in line:
-            if self.state < 2 and len(self.damageType) == 1:
-                self.damageType[0] = self.dictDT[line.split()[-1]]
-            else:
-                self.damageType.append(self.dictDT[line.split()[-1]])
-        if self.state > 0 and 'jobId=/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour' in line:
-            return -1 #Run abort detected
-        if not self.nickname and 'Player name is ' in line:
-            self.nickname = line.split()[-1]
-        if self.state in self.stateLoop:
-            if not self.stateText[self.state + 1] in line:
-                if self.stateText[self.state] in line:
-                    self.stateTime[self.state].append(float(line.split(' ', 1)[0]))
-            else:
-                if self.state in self.stateAdjustShield:
-                    self.stateTime[self.state].append(self.stateTime[self.state][-1])
-                self.state += 1
-                self.state_check(line)
-        elif self.stateText[self.state] in line:
-            if self.state == 0:
-                self.stateTime[self.state] = 0
-            else:
-                self.stateTime[self.state] = float(line.split(' ', 1)[0])             
-            self.state += 1
-        return 0 #Still running
-    
-def color(text, col):
+    'DT_GAS': "Gas",
+    'DT_VIRAL': "Viral",
+    'DT_MAGNETIC': "Magnetic",
+    'DT_RADIATION': "Radiation",
+    'DT_CORROSIVE': "Corrosive",
+    'DT_EXPLOSION': "Blast"}
+
+
+class RunAbort(Exception):
+    pass
+
+
+class LogEnd(Exception):
+    pass
+
+
+class Constants:
+    NICKNAME = 'Player name is'
+    HEIST_START = 'jobId=/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour'
+    HEIST_ABORT = 'SetReturnToLobbyLevelArgs: '
+    ELEVATOR_EXIT = 'EidolonMP.lua: EIDOLONMP: Avatar left the zone'
+    SHIELD_SWITCH = 'SwitchShieldVulnerability'
+    LEG_KILL = 'Leg freshly destroyed at part'
+    BODY_VULNERABLE = 'Camper->StartVulnerable() - The Camper can now be damaged!'
+    BODY_KILLED = 'Camper->GetUpFromStun()'  # Note that there is also a CompleteGetUpFromStun() function
+    PYLONS_LAUNCHED = 'Pylon launch complete'
+    PHASE_1_START = 'Orb Fight - Starting first attack Orb phase'
+    PHASE_ENDS = {1: 'Orb Fight - Starting second attack Orb phase',
+                  2: 'Orb Fight - Starting third attack Orb phase',
+                  3: 'Orb Fight - Starting final attack Orb phase',
+                  4: ''}
+    FINAL_PHASE = 4
+
+
+def color(text: str, col: str) -> str:
     return col + text + rs.fg
-    
-def ErrorMsg():
+
+
+class RelRun:
+
+    def __init__(self,
+                 nickname: str,
+                 pt_found: float,
+                 phase_durations: dict[int, float],
+                 shields: dict[int, list[tuple[str, float]]],
+                 legs: dict[int, list[float]],
+                 body_dur: dict[int, float],
+                 pylon_dur: dict[int, float]):
+        self.nickname = nickname
+        self.pt_found = pt_found
+        self.phase_durations = phase_durations
+        self.shields = shields
+        self.legs = legs
+        self.body_dur = body_dur
+        self.pylon_dur = pylon_dur
+
+    def __str__(self):
+        return '\n'.join((f'{key}: {val}' for key, val in vars(self).items()))
+
+    def pretty_print(self, run_nr: int = 1):
+        print(color('-' * 72, fg.white))  # header
+
+        tot_time = self.phase_durations[4]
+        print(f'{fg.cyan}Profit-Taker Run #{run_nr} by {fg.li_cyan}{self.nickname}{fg.cyan} cleared in '
+              f'{fg.li_cyan}{int(tot_time / 60)}m {int(tot_time % 60)}s {int(tot_time % 1 * 1000)}ms\n')
+
+        print(f'{fg.li_red}From elevator to Profit-Taker took {self.pt_found:.3f}s.\n')
+
+        for i in [1, 2, 3, 4]:
+            self.pretty_print_phase(i)
+
+        self.pretty_print_sum_of_parts()
+
+        print(f'{fg.white}{"-" * 72}\n\n')  # footer
+
+    def pretty_print_phase(self, phase: int):
+        white_dash = f'{fg.white} - '
+        print(f'{fg.li_green}> Phase {phase} {fg.li_cyan}'
+              f'[{int(self.phase_durations[phase] / 60)}:{int(self.phase_durations[phase] % 60):02d}]')
+
+        if phase in self.shields:
+            shield_sum = sum(time for _, time in self.shields[phase] if not isnan(time))
+            shield_str = f'{fg.white} | '.join((f'{fg.li_yellow}{s_type} {"?" if isnan(s_time) else f"{s_time:.3f}"}s'
+                                                for s_type, s_time in self.shields[phase]))
+            print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:7.3f}s{white_dash}{fg.li_yellow}{shield_str}')
+
+        normal_legs = [f'{fg.li_yellow}{time:.3f}s' for time in self.legs[phase][:4]]
+        leg_regen = [f'{fg.red}{time:.3f}s' for time in self.legs[phase][4:]]
+        leg_str = f"{fg.white} | ".join(normal_legs + leg_regen)
+        print(f'{fg.white} Leg break:\t{fg.li_green}{sum(self.legs[phase]):7.3f}s{white_dash}{leg_str}')
+        print(f'{fg.white} Body killed:\t{fg.li_green}{self.body_dur[phase]:7.3f}s')
+
+        if phase in self.pylon_dur:
+            print(f'{fg.white} Pylons:\t{fg.li_green}{self.pylon_dur[phase]:7.3f}s')
+        print('')  # to print an enter
+
+    def pretty_print_sum_of_parts(self):
+        shield_sum = sum(time for times in self.shields.values() for _, time in times if not isnan(time))
+        leg_sum = sum(time for times in self.legs.values() for time in times)
+        body_sum = sum(self.body_dur.values())
+        pylon_sum = sum(self.pylon_dur.values())
+        total_sum = shield_sum + leg_sum + body_sum + pylon_sum
+
+        print(f'{fg.li_green}> Sum of parts {fg.li_cyan}[{int(total_sum / 60)}:{int(total_sum % 60):02d}]')
+        print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:7.3f}s')
+        print(f'{fg.white} Leg Break:\t{fg.li_green}{leg_sum:7.3f}s')
+        print(f'{fg.white} Body Killed:\t{fg.li_green}{body_sum:7.3f}s')
+        print(f'{fg.white} Pylons:\t{fg.li_green}{pylon_sum:7.3f}s')
+
+    def sum_all_times(self) -> int:
+        sum_ = 0
+        for phase in [1, 2, 3, 4]:
+            sum_ += sum(time for _, time in self.shields[phase] if not isnan(time))
+            sum_ += sum(self.legs[phase])
+        sum_ += sum(self.body_dur.values())
+        sum_ += sum(self.pylon_dur.values())
+        return sum_
+
+
+class AbsRun:
+
+    def __init__(self, nickname: str, heist_start: float):
+        self.nickname = nickname
+        self.heist_start = heist_start
+        self.pt_found = 0.0
+        self.shields: dict[int, list[tuple[str, float]]] = defaultdict(list)  # phase -> list((type, absolute time))
+        self.legs: dict[int, list[float]] = defaultdict(list)  # phase -> list(absolute time)
+        self.body_vuln: dict[int, float] = {}  # phase -> vuln-time
+        self.body_kill: dict[int, float] = {}  # phase -> kill-time
+        self.pylon_start: dict[int, float] = {}  # phase -> start-time
+        self.pylon_end: dict[int, float] = {}  # phase -> end-time
+
+    def __str__(self):
+        return '\n'.join((f'{key}: {val}' for key, val in vars(self).items()))
+
+    def to_rel(self) -> RelRun:
+        pt_found = self.pt_found - self.heist_start
+        phase_durations = {}
+        shields = defaultdict(list)
+        legs = defaultdict(list)
+        body_dur = {}
+        pylon_dur = {}
+
+        previous_value = self.pt_found
+        for phase in [1, 2, 3, 4]:
+            if phase in [1, 3, 4]:  # Phases with shield phases
+                for i in range(len(self.shields[phase]) - 1):
+                    shield_type, _ = self.shields[phase][i]
+                    _, shield_end = self.shields[phase][i + 1]
+                    shields[phase].append((shield_type, shield_end - previous_value))
+                    previous_value = shield_end
+                shields[phase].append((self.shields[phase][-1][0], nan))
+            # Every phase has an armor phase
+            for leg in self.legs[phase]:
+                legs[phase].append(leg - previous_value)
+                previous_value = leg
+            body_dur[phase] = self.body_kill[phase] - self.body_vuln[phase]
+            previous_value = self.body_kill[phase]
+
+            if phase in [1, 3]:  # Phases with pylon phases
+                pylon_dur[phase] = self.pylon_end[phase] - self.pylon_start[phase]
+                previous_value = self.pylon_end[phase]
+
+            # Set phase duration
+            phase_durations[phase] = previous_value - self.heist_start
+
+        return RelRun(self.nickname, pt_found, phase_durations, shields, legs, body_dur, pylon_dur)
+
+
+def time_from_line(line: str) -> float:
+    return float(line.split()[0])
+
+
+def shield_from_line(line: str) -> tuple[str, float]:
+    return dt_dict[line.split()[-1]], time_from_line(line)
+
+
+def skip_until_one_of(log: Iterator[str], conditions: list[Callable[[str], bool]]) -> tuple[str, int]:
+    try:
+        line = next(log)
+        while not any((condition(line) for condition in conditions)):  # Skip until one of the conditions hold
+            line = next(log)
+        return line, next((i for i, cond in enumerate(conditions) if cond(line)))  # return the first passing index
+    except StopIteration:
+        raise LogEnd()
+
+
+def register_phase(log: Iterator[str], run: AbsRun, phase: int):
+    kill_sequence = 0
+    while True:  # match exists for phases 1-3, kill_sequence for phase 4.
+        line, match = skip_until_one_of(log, [lambda line: Constants.SHIELD_SWITCH in line,
+                                              lambda line: Constants.LEG_KILL in line,
+                                              lambda line: Constants.BODY_VULNERABLE in line,  # is also phase 4 end
+                                              lambda line: Constants.BODY_KILLED in line,
+                                              lambda line: Constants.PYLONS_LAUNCHED in line,
+                                              lambda line: Constants.PHASE_1_START in line,
+                                              lambda line: phase != Constants.FINAL_PHASE and \
+                                                           Constants.PHASE_ENDS[phase] in line,
+                                              lambda line: Constants.HEIST_START in line])  # Functions as abort as well
+        if match == 0:
+            run.shields[phase].append(shield_from_line(line))
+        elif match == 1:
+            run.legs[phase].append(time_from_line(line))
+        elif match == 2:
+            if kill_sequence == 0:  # Only register the first invuln message on each phase
+                run.body_vuln[phase] = time_from_line(line)
+            kill_sequence += 1  # 3x BODY_VULNERABLE in one phase means PT dies.
+            if kill_sequence == 3:  # PT dies.
+                run.shields[phase].pop()  # We get a random extra shield we don't need.
+                run.body_kill[phase] = time_from_line(line)
+                return
+        elif match == 3:
+            run.body_kill[phase] = time_from_line(line)
+        elif match == 4:
+            run.pylon_start[phase] = time_from_line(line)
+        elif match == 5:
+            run.pt_found = time_from_line(line)
+        elif match == 6:
+            if phase in [1, 3]:  # Ignore phase 2 as it already matches body_kill.
+                run.pylon_end[phase] = time_from_line(line)
+            if phase == 3:  # Put the final shield from phase 3 as the first of phase 4.
+                run.shields[phase + 1].append(run.shields[phase].pop())
+            return
+        elif match == 7:
+            raise RunAbort()
+
+
+def read_run(log: Iterator[str], aborted=False) -> AbsRun:
+    """
+    Reads a run.
+    :param log: Iterator of the ee.log, expects a line with every next() call
+    :param aborted: Indicate whether the start of this run indicates a previous run that was aborted.
+    Necessary to properly initialize this run.
+    :return: Absolute timings from the fight.
+    """
+    # Find heist load.
+    if not aborted:  # Only demand the heist load if the run doesn't indicate another was aborted.
+        skip_until_one_of(log, [lambda line: Constants.HEIST_START in line])
+
+    nickname = skip_until_one_of(log, [lambda line: Constants.NICKNAME in line])[0].split()[-1]
+
+    # Find heist start
+    line, _ = skip_until_one_of(log, [lambda line: Constants.ELEVATOR_EXIT in line])
+    run = AbsRun(nickname, time_from_line(line))
+
+    for phase in [1, 2, 3, 4]:
+        register_phase(log, run, phase)  # Adds information to run
+
+    return run
+
+
+def get_file() -> Iterator[str]:
+    try:
+        dropped_file = sys.argv[1]
+        return open(dropped_file, 'r')
+    except IndexError:
+        print(r'Analyzing %LOCALAPPDATA%\Warframe\EE.log.')
+        print('Note that you can analyze another file by dragging it into the exe file.')
+        dropped_file = os.getenv('LOCALAPPDATA') + r'\Warframe\EE.log'
+        print('The file is being followed, meaning that runs will appear as you play.')
+        return follow(dropped_file)
+
+
+def error_msg():
     traceback.print_exc()
-    print(color("\nAn error might have occured, please screenshot this and report this along with your EE.log attached.", fg.li_red))
+    print(
+        color("\nAn error might have occured, please screenshot this and report this along with your EE.log attached.",
+              fg.li_red))
     input('Press ENTER to exit..')
     sys.exit()
 
 
-print(fg.cyan + "Profit-Taker Analyzer " + version + " by " + fg.li_cyan + "ReVoltage#3425")
-print(color("https://github.com/revoltage34/ptanalyzer \n", fg.white))
+def follow(filename: str):
+    """generator function that yields new lines in a file"""
+    known_size = os.stat(filename).st_size
+    file = open(filename, "r")
 
-try:
-    droppedFile = sys.argv[1]
-except:
-    print(fg.li_green + "How to use:" + fg.li_yellow)
-    print("Drag your EE.log to the .exe file or this terminal then hit ENTER")
-    print("Support multiple Profit-Taker run per EE.log\n")
-    print("Or just hit ENTER now to exit..\n" + fg.rs)
-    fname = input()
-    droppedFile = str(fname).replace("\"", "")
+    # Start infinite loop
+    cur_line = []  # Store multiple parts of the same line to deal with the logger comitting incomplete lines.
+    while True:
+        if (new_size := os.stat(filename).st_size) < known_size:
+            print('Restart detected.')
+            file = open(filename, 'r')
+            print('Succesfully reconnected to ee.log. Now listening for new Profit-Taker runs.')
+        known_size = new_size
 
-if droppedFile != "":
-    text = open(droppedFile, 'r', encoding='utf-8', errors='ignore').readlines()
-else:
-    sys.exit()
+        # Yield lines until the last line of file and follow the end on a delay
+        while line := file.readline():
+            cur_line.append(line)  # Store whatever is found.
+            if line[-1] == '\n':  # On newline, commit the line
+                yield ''.join(cur_line)
+                cur_line = []
+            else:  # No newline means we wait for more input before we yield it.
+                sleep(1)
 
-PT = [] #List of class Analyzer
-RT = [] #Timestamps
-RT_c = [] #Gap between timestamps
 
-found = False
-run = 0
+def main():
+    it = get_file()
+    try:
+        run_nr = 1
+        aborted = False
+        while True:
+            try:
+                read_run(it, aborted).to_rel().pretty_print(run_nr)
+                run_nr += 1
+                aborted = False
+            except RunAbort:
+                aborted = True
+    except LogEnd:
+        input(f'{rs.fg}Press ENTER to exit...')
 
-PT.append(Analyzer())
-RT.append([])
-RT_c.append([])
-try:
-    for line in text:
-        check = PT[run].state_check(line)
-        if check > 0:
-            count = 0
-            start = PT[run].stateTime[1]
-            for t in PT[run].stateTime:
-                if count in PT[run].stateLoop:
-                    temp = []
-                    for x in t:
-                        temp.append(round(x - start, 3))
-                    RT[run].append(temp)
-                else:
-                    RT[run].append(round(t - start, 3))
-                count += 1
-                
-            RT[run][4].pop()
-            RT[run][9].pop()
-            RT[run][13].pop()
-            RT[run][19].pop()
-            
-            RT[run][12].pop(0)
-            RT[run][12].append(RT[run][12][-1])
-                
-            count = 0
-            before = RT[run][1]
-            for t in RT[run]:
-                if count in PT[run].stateLoop:
-                    temp = []
-                    for x in t:
-                        temp.append(str(round(x - before, 3)))
-                        before = x
-                    RT_c[run].append(temp)
-                else:
-                    RT_c[run].append(str(round(t - before, 3)))
-                    before = t
-                count += 1
-                
-            #for t in RT_c[run]:
-                #print(str(t) + '\n')
-            found = True
-            nickname = PT[run].nickname
-            
-            PT.append(Analyzer())
-            RT.append([])
-            RT_c.append([])
-            run += 1
-        elif check < 0:
-            PT[run] = Analyzer()
-            PT[run].state = 1
-except:
-    ErrorMsg()
-    
-try:
-    if (not found):
-        print(color("Profit-Taker run not found", fg.li_red))
-    else:
-        for i in range(run):
-            shieldDT = 0
-            print(fg.white + "------------------------------------------------------------------------" + rs.fg)
-            
-            mins = str(int(RT[i][-1]/60))
-            secs = str(int(RT[i][-1]%60))
-            ms = str(int(RT[i][-1]%1*1000))
-            print(fg.cyan + "Profit-Taker Run #" + str(i + 1) + " by " + color(nickname, fg.li_cyan) + fg.cyan + " cleared in " + color(mins + "m " + secs + "s " + ms + "ms\n", fg.li_cyan))
 
-            print(color("From elevator to Profit-Taker took " + RT_c[i][2] + "s\n", fg.li_red))
-            
-            #--PHASE 1--#
-            mins = str(int(RT[i][6]/60))
-            secs = str(int(RT[i][6]%60))
-            if RT[i][6]%60 < 10:
-                secs = "0" + secs
-            print(color("> Phase 1 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
-            
-            temp = ""
-            scount = 1
-            for t in RT_c[i][3]:
-                if temp != "":
-                    temp += " | "
-                if scount == len(RT_c[i][3]):
-                    temp += PT[i].damageType[shieldDT] + " ?s"
-                else:
-                    temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
-                shieldDT += 1
-                scount += 1
-            print(color(" Shield change: ", fg.white) + fg.li_yellow + temp)
-            
-            temp = ""
-            for t in RT_c[i][4]:
-                if temp != "":
-                    temp += " | "
-                temp += str(t) + "s"
-            print(color(" Leg break: ", fg.white) + fg.li_yellow + temp)
-            
-            
-            print(color(" Body destroyed in " + RT_c[i][6] + "s\n", fg.white))
-            
-            #--PHASE 2--#
-            mins = str(int(RT[i][11]/60))
-            secs = str(int(RT[i][11]%60))
-            if RT[i][11]%60 < 10:
-                secs = "0" + secs
-            print(color("> Phase 2 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
-            print(color(" 4 Pylons destroyed in " + RT_c[i] [8] + "s", fg.white))
-            
-            temp = ""
-            for t in RT_c[i][9]:
-                if temp != "":
-                    temp += " | "
-                temp += str(t) + "s"
-            print(color(" Leg break: ", fg.white) + fg.li_yellow + temp)
-            
-            
-            print(color(" Body destroyed in " + RT_c[i][11] + "s\n", fg.white))
-            
-            #--PHASE 3--#
-            mins = str(int(RT[i][15]/60))
-            secs = str(int(RT[i][15]%60))
-            if RT[i][15]%60 < 10:
-                secs = "0" + secs
-            print(color("> Phase 3 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
-            
-            temp = ""
-            scount = 1
-            for t in RT_c[i][12]:
-                if temp != "":
-                    temp += " | "
-                if scount == len(RT_c[i][12]):
-                    temp += PT[i].damageType[shieldDT] + " ?s"
-                else:
-                    temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
-                shieldDT += 1
-                scount += 1
-            print(color(" Shield change: ", fg.white) + fg.li_yellow + temp)
-            
-            temp = ""
-            for t in RT_c[i][13]:
-                if temp != "":
-                    temp += " | "
-                temp += str(t) + "s"
-            print(color(" Leg break: ", fg.white) + fg.li_yellow + temp)
-            
-            print(color(" Body destroyed in " + RT_c[i][15] + "s\n", fg.white))
-            
-            #--PHASE 4--#
-            mins = str(int(RT[i][22]/60))
-            secs = str(int(RT[i][22]%60))
-            if RT[i][22]%60 < 10:
-                secs = "0" + secs
-            print(color("> Phase 4 ", fg.li_green) + color("[" + mins + ":" + secs + "]", fg.li_cyan))
-            print(color(" 6 Pylons destroyed in " + RT_c[i] [17] + "s", fg.white))
-            
-            temp = ""
-            scount = 1
-            for t in RT_c[i][18]:
-                if temp != "":
-                    temp += " | "
-                if scount == len(RT_c[i][18]):
-                    temp += PT[i].damageType[shieldDT] + " ?s"
-                else:
-                    temp += PT[i].damageType[shieldDT] + " " + str(t) + "s"
-                shieldDT += 1
-                scount += 1
-            print(color(" Shield change: ", fg.white) + fg.li_yellow + temp)
-            
-            temp = ""
-            for t in RT_c[i][19]:
-                if temp != "":
-                    temp += " | "
-                temp += str(t) + "s"
-            print(color(" Leg break: ", fg.white) + fg.li_yellow + temp)
-            
-            print(color(" Body destroyed in " + RT_c[i][22] + "s\n", fg.white))
-            
-            print(fg.white + "------------------------------------------------------------------------\n\n" + rs.fg)
-        
-    input('Press ENTER to exit..')
-except:
-    ErrorMsg()
+if __name__ == "__main__":
+    print(f'{fg.cyan}Profit-Taker Analyzer {version} by {fg.li_cyan}ReVoltage#3425{fg.cyan}, rewritten by '
+          f'{fg.li_cyan}Iterniam#5829.')
+    print(color("https://github.com/revoltage34/ptanalyzer \n", fg.white))
+    # noinspection PyBroadException
+    try:
+        main()
+    except Exception:
+        error_msg()
