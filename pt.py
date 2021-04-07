@@ -54,7 +54,7 @@ class Constants:
     SHIELD_SWITCH = 'SwitchShieldVulnerability'
     LEG_KILL = 'Leg freshly destroyed at part'
     BODY_VULNERABLE = 'Camper->StartVulnerable() - The Camper can now be damaged!'
-    BODY_KILLED = 'Camper->GetUpFromStun()'  # Note that there is also a CompleteGetUpFromStun() function
+    STATE_CHANGE = 'CamperHeistOrbFight.lua: Landscape - New State: '
     PYLONS_LAUNCHED = 'Pylon launch complete'
     PHASE_1_START = 'Orb Fight - Starting first attack Orb phase'
     PHASE_ENDS = {1: 'Orb Fight - Starting second attack Orb phase',
@@ -175,10 +175,10 @@ class RelRun:
 
 class AbsRun:
 
-    def __init__(self, run_nr: int, nickname: str, heist_start: float):
+    def __init__(self, run_nr: int):
         self.run_nr = run_nr
-        self.nickname = nickname
-        self.heist_start = heist_start
+        self.nickname = ''
+        self.heist_start = 0.0
         self.pt_found = 0.0
         self.shields: dict[int, list[tuple[str, float]]] = defaultdict(list)  # phase -> list((type, absolute time))
         self.legs: dict[int, list[float]] = defaultdict(list)  # phase -> list(absolute time)
@@ -248,11 +248,13 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
         line, match = skip_until_one_of(log, [lambda line: Constants.SHIELD_SWITCH in line,
                                               lambda line: Constants.LEG_KILL in line,
                                               lambda line: Constants.BODY_VULNERABLE in line,  # is also phase 4 end
-                                              lambda line: Constants.BODY_KILLED in line,
+                                              lambda line: Constants.STATE_CHANGE in line,
                                               lambda line: Constants.PYLONS_LAUNCHED in line,
                                               lambda line: Constants.PHASE_1_START in line,
                                               lambda line: phase != Constants.FINAL_PHASE and \
                                                            Constants.PHASE_ENDS[phase] in line,
+                                              lambda line: Constants.NICKNAME in line,
+                                              lambda line: Constants.ELEVATOR_EXIT in line,
                                               lambda line: Constants.HEIST_START in line])  # Functions as abort as well
         if match == 0:
             run.shields[phase].append(shield_from_line(line))
@@ -267,7 +269,11 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
                 run.body_kill[phase] = time_from_line(line)
                 return
         elif match == 3:
-            run.body_kill[phase] = time_from_line(line)
+            # Generic match on state change to find things we can't reliably find otherwise
+            new_state = int(line.split()[8])
+            # State 3, 5 and 6 are body kills for phases 1, 2 and 3.
+            if new_state in [3, 5, 6]:
+                run.body_kill[phase] = time_from_line(line)
         elif match == 4:
             run.pylon_start[phase] = time_from_line(line)
         elif match == 5:
@@ -279,6 +285,11 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
                 run.shields[phase + 1].append(run.shields[phase].pop())
             return
         elif match == 7:
+            run.nickname = line.split()[-1]
+        elif match == 8:
+            if not run.heist_start:  # Only use the first time that the zone is left aka heist is started.
+                run.heist_start = time_from_line(line)
+        elif match == 9:
             raise RunAbort()
 
 
@@ -295,14 +306,10 @@ def read_run(log: Iterator[str], run_nr: int, aborted=False) -> AbsRun:
     if not aborted:  # Only demand the heist load if the run doesn't indicate another was aborted.
         skip_until_one_of(log, [lambda line: Constants.HEIST_START in line])
 
-    nickname = skip_until_one_of(log, [lambda line: Constants.NICKNAME in line])[0].split()[-1]
-
-    # Find heist start
-    line, _ = skip_until_one_of(log, [lambda line: Constants.ELEVATOR_EXIT in line])
-    run = AbsRun(run_nr, nickname, time_from_line(line))
+    run = AbsRun(run_nr)
 
     for phase in [1, 2, 3, 4]:
-        register_phase(log, run, phase)  # Adds information to run
+        register_phase(log, run, phase)  # Adds information to run, including the start time
 
     return run
 
