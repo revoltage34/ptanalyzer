@@ -18,7 +18,7 @@ from colorama import init
 
 init()
 
-version = "v2.0"
+version = "v2.0.1"
 
 dt_dict = {
     'DT_IMPACT': "Impact",
