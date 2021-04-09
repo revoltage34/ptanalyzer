@@ -39,7 +39,8 @@ dt_dict = {
 
 
 class RunAbort(Exception):
-    pass
+    def __init__(self, require_heist_start: bool):
+        self.require_heist_start = require_heist_start
 
 
 class LogEnd(Exception):
@@ -47,8 +48,9 @@ class LogEnd(Exception):
 
 
 class Constants:
-    NICKNAME = 'Player name is'
+    NICKNAME = 'Net [Info]: name: '
     HEIST_START = 'jobId=/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour'
+    HOST_MIGRATION = '"jobId" : "/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour'
     HEIST_ABORT = 'SetReturnToLobbyLevelArgs: '
     ELEVATOR_EXIT = 'EidolonMP.lua: EIDOLONMP: Avatar left the zone'
     SHIELD_SWITCH = 'SwitchShieldVulnerability'
@@ -255,12 +257,13 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
                                                            Constants.PHASE_ENDS[phase] in line,
                                               lambda line: Constants.NICKNAME in line,
                                               lambda line: Constants.ELEVATOR_EXIT in line,
-                                              lambda line: Constants.HEIST_START in line])  # Functions as abort as well
-        if match == 0:
+                                              lambda line: Constants.HEIST_START in line,  # Functions as abort as well
+                                              lambda line: Constants.HOST_MIGRATION in line])
+        if match == 0:  # Shield switch
             run.shields[phase].append(shield_from_line(line))
-        elif match == 1:
+        elif match == 1:  # Leg kill
             run.legs[phase].append(time_from_line(line))
-        elif match == 2:
+        elif match == 2:  # Body vulnerable / phase 4 end
             if kill_sequence == 0:  # Only register the first invuln message on each phase
                 run.body_vuln[phase] = time_from_line(line)
             kill_sequence += 1  # 3x BODY_VULNERABLE in one phase means PT dies.
@@ -268,42 +271,44 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
                 run.shields[phase].pop()  # We get a random extra shield we don't need.
                 run.body_kill[phase] = time_from_line(line)
                 return
-        elif match == 3:
+        elif match == 3:  # Generic state change
             # Generic match on state change to find things we can't reliably find otherwise
             new_state = int(line.split()[8])
             # State 3, 5 and 6 are body kills for phases 1, 2 and 3.
             if new_state in [3, 5, 6]:
                 run.body_kill[phase] = time_from_line(line)
-        elif match == 4:
+        elif match == 4:  # Pylons launched
             run.pylon_start[phase] = time_from_line(line)
-        elif match == 5:
+        elif match == 5:  # Profit-Taker found
             run.pt_found = time_from_line(line)
-        elif match == 6:
+        elif match == 6:  # Phase endings (excludes phase 4)
             if phase in [1, 3]:  # Ignore phase 2 as it already matches body_kill.
                 run.pylon_end[phase] = time_from_line(line)
             if phase == 3:  # Put the final shield from phase 3 as the first of phase 4.
                 run.shields[phase + 1].append(run.shields[phase].pop())
             return
-        elif match == 7:
-            run.nickname = line.split()[-1]
-        elif match == 8:
+        elif match == 7:  # Nickname
+            run.nickname = line.replace(',', '').split()[-2]
+        elif match == 8:  # Elevator exit (start of speedrun timing)
             if not run.heist_start:  # Only use the first time that the zone is left aka heist is started.
                 run.heist_start = time_from_line(line)
-        elif match == 9:
-            raise RunAbort()
+        elif match == 9:  # New heist start found
+            raise RunAbort(require_heist_start=False)
+        elif match == 10:  # Host migration
+            raise RunAbort(require_heist_start=True)
 
 
-def read_run(log: Iterator[str], run_nr: int, aborted=False) -> AbsRun:
+def read_run(log: Iterator[str], run_nr: int, require_heist_start=False) -> AbsRun:
     """
     Reads a run.
     :param log: Iterator of the ee.log, expects a line with every next() call.
     :param run_nr: The number assigned to this run if it does not end up being aborted.
-    :param aborted: Indicate whether the start of this run indicates a previous run that was aborted.
+    :param require_heist_start: Indicate whether the start of this run indicates a previous run that was aborted.
     Necessary to properly initialize this run.
     :return: Absolute timings from the fight.
     """
     # Find heist load.
-    if not aborted:  # Only demand the heist load if the run doesn't indicate another was aborted.
+    if require_heist_start:  # Heist load is not required if the previous abort signifies the start of a new mission
         skip_until_one_of(log, [lambda line: Constants.HEIST_START in line])
 
     run = AbsRun(run_nr)
@@ -315,6 +320,7 @@ def read_run(log: Iterator[str], run_nr: int, aborted=False) -> AbsRun:
 
 
 def print_summary(runs: list[RelRun]):
+    assert len(runs) > 0
     best_run = min(runs, key=lambda run: run.length())
     print(f'{fg.li_green}Best run:\t'
           f'{fg.li_cyan}{time_str(best_run.length(), "units")} '
@@ -345,47 +351,49 @@ def error_msg():
 def follow(filename: str):
     """generator function that yields new lines in a file"""
     known_size = os.stat(filename).st_size
-    file = open(filename, "r")
+    with open(filename, 'r', encoding='latin-1') as file:
+        # Start infinite loop
+        cur_line = []  # Store multiple parts of the same line to deal with the logger comitting incomplete lines.
+        while True:
+            if (new_size := os.stat(filename).st_size) < known_size:
+                print(f'{fg.white}Restart detected.')
+                file.seek(0)  # Go back to the start of the file
+                print('Succesfully reconnected to ee.log. Now listening for new Profit-Taker runs.')
+            known_size = new_size
 
-    # Start infinite loop
-    cur_line = []  # Store multiple parts of the same line to deal with the logger comitting incomplete lines.
-    while True:
-        if (new_size := os.stat(filename).st_size) < known_size:
-            print(f'{fg.white}Restart detected.')
-            file = open(filename, 'r')
-            print('Succesfully reconnected to ee.log. Now listening for new Profit-Taker runs.')
-        known_size = new_size
-
-        # Yield lines until the last line of file and follow the end on a delay
-        while line := file.readline():
-            cur_line.append(line)  # Store whatever is found.
-            if line[-1] == '\n':  # On newline, commit the line
-                yield ''.join(cur_line)
-                cur_line = []
-            else:  # No newline means we wait for more input before we yield it.
-                sleep(1)
+            # Yield lines until the last line of file and follow the end on a delay
+            while line := file.readline():
+                cur_line.append(line)  # Store whatever is found.
+                if line[-1] == '\n':  # On newline, commit the line
+                    yield ''.join(cur_line)
+                    cur_line = []
+                else:  # No newline means we wait for more input before we yield it.
+                    sleep(1)
 
 
 def analyze_log(dropped_file: str):
-    with open(dropped_file, 'r') as it:
+    with open(dropped_file, 'r', encoding='latin-1') as it:
         try:
             runs = []
-            aborted = False
+            require_heist_start = True
             while True:
                 try:
-                    runs.append(read_run(it, len(runs) + 1, aborted).to_rel())
-                    aborted = False
-                except RunAbort:
-                    aborted = True
+                    runs.append(read_run(it, len(runs) + 1, require_heist_start).to_rel())
+                    require_heist_start = True
+                except RunAbort as abort:
+                    require_heist_start = abort.require_heist_start
         except LogEnd:
             pass
+    if len(runs) > 0:
+        best_run = min(runs, key=lambda run: run.length())
+        best_run.best_run = True
+        for run in runs:
+            run.pretty_print()
 
-    best_run = min(runs, key=lambda run: run.length())
-    best_run.best_run = True
-    for run in runs:
-        run.pretty_print()
-
-    print_summary(runs)
+        print_summary(runs)
+    else:
+        print(f'{fg.white}No Profit-Taker runs found.\n'
+              f'Note that you have to be host throughout the entire run for it to show up as a valid run.')
 
     input(f'{rs.fg}Press ENTER to exit...')
 
@@ -394,20 +402,20 @@ def follow_log(filename: str):
     it = follow(filename)
     best_time = float('inf')
     runs = []
-    aborted = False
+    require_heist_start = True
     while True:
         try:
-            run = read_run(it, len(runs) + 1, aborted).to_rel()
+            run = read_run(it, len(runs) + 1, require_heist_start).to_rel()
             runs.append(run)
-            aborted = False
+            require_heist_start = True
 
             if run.length() < best_time:
                 best_time = run.length()
                 run.best_run_yet = True
             run.pretty_print()
             print_summary(runs)
-        except RunAbort:
-            aborted = True
+        except RunAbort as abort:
+            require_heist_start = abort.require_heist_start
 
 
 def main():
