@@ -12,9 +12,7 @@ Time starts when you exit the elevator, and ends on the final blow to Profit-Tak
  https://www.speedrun.com/wf/resources** 
 
 Example output:  
-![image](https://user-images.githubusercontent.com/24490028/113768421-1f9c0b80-9720-11eb-9618-f157ee17e86d.png)
-
-
+![image](https://user-images.githubusercontent.com/24490028/114284985-0793f700-9a54-11eb-9d9f-ed3f8e316514.png)
 
 **Usage:**  
 * Either run the program to follow the game's log files and have your runs analyzed live.
@@ -23,11 +21,12 @@ Example output:
 EE.log can be found in `%LOCALAPPDATA%\Local\Warframe` (EE.log is saved per session)
 
 **Features:**
-1. Analyze specific log files by dragging one onto the .exe file.
-2. 'Follow' the game's log file to have your runs analyzed live (survives game restarts!)
-3. Automatically mark the best run.
-4. Easily view important timestamps and phase durations.
+1. Analyzes specific log files by dragging one onto the .exe file.
+2. Follows the game's log file analyze your runs live (survives game restarts!)
+3. Displays the first shield element as soon as Profit-Taker spawns in follow mode.
+4. Marks the best run and displays timestamps and phase durations.
 5. Supports multiple Profit-Taker runs per EE.log
+6. Automatically checks for newer versions.
 
 **Limitation:**
 1. The tool can only detect shield changes, not the cause of it. This means it cannot differentiate between it being destroyed and it getting reset by an Amp or the time limit.
