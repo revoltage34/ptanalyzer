@@ -5,6 +5,8 @@
 # Requires Python 3.9                       #
 #############################################
 
+import requests  # For checking the version
+import packaging.version
 import traceback
 import sys
 import os
@@ -14,11 +16,11 @@ from time import sleep
 from typing import Iterator, Callable, Literal
 
 from sty import fg, rs
-from colorama import init
+import colorama
 
-init()
 
-version = "v2.0.2"
+VERSION = "v2.1"
+follow_mode = False  # False -> analyze mode
 
 dt_dict = {
     'DT_IMPACT': "Impact",
@@ -261,6 +263,8 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
                                               lambda line: Constants.HOST_MIGRATION in line])
         if match == 0:  # Shield switch
             run.shields[phase].append(shield_from_line(line))
+            if follow_mode and len(run.shields[1]) == 1:  # The first shield can help determine whether to abort.
+                print(f'{fg.white}First shield: {fg.li_cyan}{run.shields[phase][0][0]}')
         elif match == 1:  # Leg kill
             run.legs[phase].append(time_from_line(line))
         elif match == 2:  # Body vulnerable / phase 4 end
@@ -329,14 +333,18 @@ def print_summary(runs: list[RelRun]):
           f'{fg.li_cyan}{time_str(sum((run.length() for run in runs)) / len(runs), "units")}\n\n')
 
 
-def get_file() -> tuple[str, bool]:  # bool -> dropped
+def get_file() -> str:
+    global follow_mode
     try:
-        return sys.argv[1], True
+        follow_mode = False
+        return sys.argv[1]
     except IndexError:
-        print(r'Analyzing %LOCALAPPDATA%\Warframe\EE.log.')
+        print(fr"{fg.li_grey}Opening Warframe's default log from %LOCALAPPDATA%\Warframe\EE.log in follow mode.")
+        print('Follow mode means that runs will appear as you play. '
+              'The first shield will also be printed when Profit-Taker spawns.')
         print('Note that you can analyze another file by dragging it into the exe file.')
-        print('The file is being followed, meaning that runs will appear as you play.')
-        return os.getenv('LOCALAPPDATA') + r'\Warframe\EE.log', False
+        follow_mode = True
+        return os.getenv('LOCALAPPDATA') + r'\Warframe\EE.log'
 
 
 def error_msg():
@@ -418,21 +426,43 @@ def follow_log(filename: str):
             require_heist_start = abort.require_heist_start
 
 
-def main():
-    print(f'{fg.cyan}Profit-Taker Analyzer {version} by {fg.li_cyan}ReVoltage#3425{fg.cyan}, rewritten by '
-          f'{fg.li_cyan}Iterniam#5829.')
-    print(color("https://github.com/revoltage34/ptanalyzer \n", fg.white))
+def check_version():
+    print(f'{fg.li_grey}Scanning for updates...', end='\r')
+    try:
+        response = requests.get("https://api.github.com/repos/revoltage34/ptanalyzer/releases/latest", timeout=2)
+        json = response.json()
+        latest_version = json['tag_name']  # KeyError -> got a non-200 OK message
+        if packaging.version.parse(VERSION) < packaging.version.parse(latest_version):
+            print(f'{fg.li_green}New version detected!       \n'
+                  f'{fg.white}You are currently on version {VERSION}, whereas the latest is {latest_version}.\n'
+                  f'To download the new update, visit https://github.com/revoltage34/ptanalyzer/releases/latest.')
+        else:
+            print(f'{fg.li_grey}Version is up-to-date.      ')
+    except (requests.exceptions.RequestException, KeyError):  # Internet down, slow or unexpected Github response.
+        print(f'{fg.red}Unable to connect to Github to check for new versions. Continuing...')
+        return
 
-    filename, dropped = get_file()
-    if dropped:
-        analyze_log(filename)
-    else:
+
+def main():
+    colorama.init()  # To make ansi colors work.
+    print(f'{fg.cyan}Profit-Taker Analyzer {VERSION} by {fg.li_cyan}ReVoltage#3425{fg.cyan}, rewritten by '
+          f'{fg.li_cyan}Iterniam#5829.')
+    print(color("https://github.com/revoltage34/ptanalyzer \n", fg.li_grey))
+
+    check_version()
+
+    filename = get_file()
+    if follow_mode:
         follow_log(filename)
+    else:
+        analyze_log(filename)
 
 
 if __name__ == "__main__":
     # noinspection PyBroadException
     try:
         main()
+    except KeyboardInterrupt as e:  # To gracefully exit on ctrl + c
+        pass
     except Exception:
         error_msg()
