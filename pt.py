@@ -19,7 +19,7 @@ from sty import fg, rs
 import colorama
 
 
-VERSION = "v2.1"
+VERSION = "v2.1.1"
 follow_mode = False  # False -> analyze mode
 
 dt_dict = {
@@ -90,7 +90,7 @@ class RelRun:
                  nickname: str,
                  pt_found: float,
                  phase_durations: dict[int, float],
-                 shields: dict[int, list[tuple[str, float]]],
+                 shields: dict[float, list[tuple[str, float]]],
                  legs: dict[int, list[float]],
                  body_dur: dict[int, float],
                  pylon_dur: dict[int, float]):
@@ -152,6 +152,10 @@ class RelRun:
 
         if phase in self.pylon_dur:
             print(f'{fg.white} Pylons:\t{fg.li_green}{self.pylon_dur[phase]:7.3f}s')
+
+        if phase == 3 and self.shields[3.5]:  # Print phase 3.5
+            print(f'{fg.white} Extra shields:\t\t   {fg.li_yellow}'
+                  f'{" | ".join((shield for shield, _ in self.shields[3.5]))}')
         print('')  # to print an enter
 
     def pretty_print_sum_of_parts(self):
@@ -184,7 +188,7 @@ class AbsRun:
         self.nickname = ''
         self.heist_start = 0.0
         self.pt_found = 0.0
-        self.shields: dict[int, list[tuple[str, float]]] = defaultdict(list)  # phase -> list((type, absolute time))
+        self.shields: dict[float, list[tuple[str, float]]] = defaultdict(list)  # phase -> list((type, absolute time))
         self.legs: dict[int, list[float]] = defaultdict(list)  # phase -> list(absolute time)
         self.body_vuln: dict[int, float] = {}  # phase -> vuln-time
         self.body_kill: dict[int, float] = {}  # phase -> kill-time
@@ -193,6 +197,12 @@ class AbsRun:
 
     def __str__(self):
         return '\n'.join((f'{key}: {val}' for key, val in vars(self).items()))
+
+    def post_process(self):
+        # Take the final shield from shield phase 3.5 and prepend it to phase 4.
+        self.shields[4] = [self.shields[3.5].pop()] + self.shields[4]
+        # Remove the extra shield from phase 4.
+        self.shields[4].pop()
 
     def to_rel(self) -> RelRun:
         pt_found = self.pt_found - self.heist_start
@@ -224,6 +234,9 @@ class AbsRun:
 
             # Set phase duration
             phase_durations[phase] = previous_value - self.heist_start
+
+        # Set phase 3.5 shields
+        shields[3.5] = [(shield, nan) for shield, _ in self.shields[3.5]]
 
         return RelRun(self.run_nr, self.nickname, pt_found, phase_durations, shields, legs, body_dur, pylon_dur)
 
@@ -262,7 +275,10 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
                                               lambda line: Constants.HEIST_START in line,  # Functions as abort as well
                                               lambda line: Constants.HOST_MIGRATION in line])
         if match == 0:  # Shield switch
-            run.shields[phase].append(shield_from_line(line))
+            # Shield_phase '3.5' is for when shields swap during the pylon phase in phase 3.
+            shield_phase = 3.5 if phase == 3 and 3 in run.pylon_start else phase
+            run.shields[shield_phase].append(shield_from_line(line))
+
             if follow_mode and len(run.shields[1]) == 1:  # The first shield can help determine whether to abort.
                 print(f'{fg.white}First shield: {fg.li_cyan}{run.shields[phase][0][0]}')
         elif match == 1:  # Leg kill
@@ -272,7 +288,6 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
                 run.body_vuln[phase] = time_from_line(line)
             kill_sequence += 1  # 3x BODY_VULNERABLE in one phase means PT dies.
             if kill_sequence == 3:  # PT dies.
-                run.shields[phase].pop()  # We get a random extra shield we don't need.
                 run.body_kill[phase] = time_from_line(line)
                 return
         elif match == 3:  # Generic state change
@@ -288,8 +303,6 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
         elif match == 6:  # Phase endings (excludes phase 4)
             if phase in [1, 3]:  # Ignore phase 2 as it already matches body_kill.
                 run.pylon_end[phase] = time_from_line(line)
-            if phase == 3:  # Put the final shield from phase 3 as the first of phase 4.
-                run.shields[phase + 1].append(run.shields[phase].pop())
             return
         elif match == 7:  # Nickname
             run.nickname = line.replace(',', '').split()[-2]
@@ -319,6 +332,7 @@ def read_run(log: Iterator[str], run_nr: int, require_heist_start=False) -> AbsR
 
     for phase in [1, 2, 3, 4]:
         register_phase(log, run, phase)  # Adds information to run, including the start time
+    run.post_process()  # Apply shield phase corrections
 
     return run
 
