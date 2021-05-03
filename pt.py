@@ -19,7 +19,7 @@ from sty import fg, rs
 import colorama
 
 
-VERSION = "v2.1.1"
+VERSION = "v2.1.2"
 follow_mode = False  # False -> analyze mode
 
 dt_dict = {
@@ -200,7 +200,8 @@ class AbsRun:
 
     def post_process(self):
         # Take the final shield from shield phase 3.5 and prepend it to phase 4.
-        self.shields[4] = [self.shields[3.5].pop()] + self.shields[4]
+        if len(self.shields[3.5]) > 0:  # If the player is too fast, there won't be phase 3.5 shields.
+            self.shields[4] = [self.shields[3.5].pop()] + self.shields[4]
         # Remove the extra shield from phase 4.
         self.shields[4].pop()
 
