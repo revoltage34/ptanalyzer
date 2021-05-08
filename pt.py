@@ -13,13 +13,13 @@ import os
 from collections import defaultdict
 from math import nan, isnan
 from time import sleep
-from typing import Iterator, Callable, Literal
+from typing import Iterator, Callable, Literal, Iterable
 
 from sty import fg, rs
 import colorama
 
 
-VERSION = "v2.1.2"
+VERSION = "v2.2"
 follow_mode = False  # False -> analyze mode
 
 dt_dict = {
@@ -51,6 +51,7 @@ class LogEnd(Exception):
 
 class Constants:
     NICKNAME = 'Net [Info]: name: '
+    SQUAD_MEMBER = 'loadout loader finished.'
     HEIST_START = 'jobId=/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour'
     HOST_MIGRATION = '"jobId" : "/Lotus/Types/Gameplay/Venus/Jobs/Heists/HeistProfitTakerBountyFour'
     HEIST_ABORT = 'SetReturnToLobbyLevelArgs: '
@@ -72,6 +73,17 @@ def color(text: str, col: str) -> str:
     return col + text + rs.fg
 
 
+def oxfordcomma(collection: Iterable[str]):
+    collection = list(collection)
+    if len(collection) == 0:
+        return ''
+    if len(collection) == 1:
+        return collection[0]
+    if len(collection) == 2:
+        return collection[0] + ' and ' + collection[1]
+    return ', '.join(collection[:-1]) + ', and ' + collection[-1]
+
+
 def time_str(seconds: float, format_: Literal['brackets', 'units']) -> str:
     if format_ == 'brackets':
         return f'[{int(seconds / 60)}:{int(seconds % 60):02d}]'
@@ -88,6 +100,7 @@ class RelRun:
     def __init__(self,
                  run_nr: int,
                  nickname: str,
+                 squad_members: set[str],
                  pt_found: float,
                  phase_durations: dict[int, float],
                  shields: dict[float, list[tuple[str, float]]],
@@ -96,6 +109,7 @@ class RelRun:
                  pylon_dur: dict[int, float]):
         self.run_nr = run_nr
         self.nickname = nickname
+        self.squad_members = squad_members
         self.pt_found = pt_found
         self.phase_durations = phase_durations
         self.shields = shields
@@ -126,7 +140,8 @@ class RelRun:
         print(f'{fg.white}{"-" * 72}\n\n')  # footer
 
     def pretty_print_run_summary(self):
-        run_info = f'{fg.cyan}Profit-Taker Run #{self.run_nr} by {fg.li_cyan}{self.nickname}{fg.cyan} cleared in ' \
+        players = oxfordcomma([self.nickname] + list(self.squad_members - {self.nickname}))
+        run_info = f'{fg.cyan}Profit-Taker Run #{self.run_nr} by {fg.li_cyan}{players}{fg.cyan} cleared in ' \
                    f'{fg.li_cyan}{time_str(self.length(), "units")}'
         if self.best_run:
             run_info += f'{fg.white} - {fg.li_magenta}Best run!'
@@ -186,6 +201,7 @@ class AbsRun:
     def __init__(self, run_nr: int):
         self.run_nr = run_nr
         self.nickname = ''
+        self.squad_members: set[str] = set()
         self.heist_start = 0.0
         self.pt_found = 0.0
         self.shields: dict[float, list[tuple[str, float]]] = defaultdict(list)  # phase -> list((type, absolute time))
@@ -239,7 +255,8 @@ class AbsRun:
         # Set phase 3.5 shields
         shields[3.5] = [(shield, nan) for shield, _ in self.shields[3.5]]
 
-        return RelRun(self.run_nr, self.nickname, pt_found, phase_durations, shields, legs, body_dur, pylon_dur)
+        return RelRun(self.run_nr, self.nickname, self.squad_members, pt_found,
+                      phase_durations, shields, legs, body_dur, pylon_dur)
 
 
 def time_from_line(line: str) -> float:
@@ -274,7 +291,8 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
                                               lambda line: Constants.NICKNAME in line,
                                               lambda line: Constants.ELEVATOR_EXIT in line,
                                               lambda line: Constants.HEIST_START in line,  # Functions as abort as well
-                                              lambda line: Constants.HOST_MIGRATION in line])
+                                              lambda line: Constants.HOST_MIGRATION in line,
+                                              lambda line: Constants.SQUAD_MEMBER in line])
         if match == 0:  # Shield switch
             # Shield_phase '3.5' is for when shields swap during the pylon phase in phase 3.
             shield_phase = 3.5 if phase == 3 and 3 in run.pylon_start else phase
@@ -314,6 +332,8 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
             raise RunAbort(require_heist_start=False)
         elif match == 10:  # Host migration
             raise RunAbort(require_heist_start=True)
+        elif match == 11:  # Squad member
+            run.squad_members.add(line.split()[-4])
 
 
 def read_run(log: Iterator[str], run_nr: int, require_heist_start=False) -> AbsRun:
