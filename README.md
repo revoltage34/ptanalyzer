@@ -1,35 +1,34 @@
 # Profit-Taker Analyzer
-Analyze Warframe Profit-Taker (Phase 4) run from EE.log, marking important timestamps and total time elapsed.
-For example: times between shield changes and leg breaks.
-
-**Ignores Profit-Taker runs where you are not the host.** 
-
-Can be used to approximate the time of an RTA speedrun.
-
-Time starts when you exit the elevator, and ends on the final blow to Profit-Taker. (Tested to be accurate)
-
 **Approved tool by Warframe Speedrun!
  https://www.speedrun.com/wf/resources** 
 
+Analyzes Profit-Taker runs from based on Warframe's log file, EE.log.  
+The tool marks the time spent on each phase and the time spent on the parts that make up said phase.  
+For the total time, there are two timing methods. The first timing method starts when you leave the elevator, and ends when the final blow is dealt to Profit-Taker. This is accurate up to a frame or two with the speedrun RTA timing.  
+Another timing method is called *fight duration*. This timing method starts when you approach Profit-Taker and it first becomes vulnerable. This reduces the difference between the different spawning locations and better reflects your performance in casual runs where you leave the elevator earlier than in speedruns.
+
 Example output:  
-![image](https://user-images.githubusercontent.com/24490028/114284985-0793f700-9a54-11eb-9d9f-ed3f8e316514.png)
+![image](https://user-images.githubusercontent.com/24490028/126034456-5551cfe2-1289-4ec3-bdeb-f37770bb8a3b.png)
 
 **Usage:**  
 * Either run the program to follow the game's log files and have your runs analyzed live.
 * Or drag a specific log file onto the .exe file.
 
-EE.log can be found in `%LOCALAPPDATA%\Local\Warframe` (EE.log is saved per session)
+EE.log can be found in `%LOCALAPPDATA%\Local\Warframe` (EE.log is reset on startup)
 
 **Features:**
 1. Analyzes specific log files by dragging one onto the .exe file.
 2. Follows the game's log file analyze your runs live (survives game restarts!)
 3. Displays the first shield element as soon as Profit-Taker spawns in follow mode.
 4. Marks the best run and displays timestamps and phase durations.
-5. Supports multiple Profit-Taker runs per EE.log
-6. Automatically checks for newer versions.
+5. Detects the [leg regen bug](https://forums.warframe.com/topic/1228077-reliable-repro-cause-known-profit-taker-leg-regen-recovering-from-the-pylon-phase-fully-heals-its-legs-5-seconds-after-theyve-already-been-vulnerable/?tab=comments#comment-11997156) and marks the extra legs in red.
+6. Supports multiple Profit-Taker runs per EE.log
+7. Automatically checks for newer versions.
 
-**Limitation:**
-1. The tool can only detect shield changes, not the cause of it. This means it cannot differentiate between it being destroyed and it getting reset by an Amp or the time limit.
-2. Because the log only shows whenever shield changes, we don't know when exactly it's broken. The only way to know is when the shield element changes, but this does not apply to last shield before breaking legs. So no time will be shown for last shield of each phase. (Last shield of each phase's time is shown as **?s**)
+**Limitations:**
+1. The tool can only detect runs where you are the host.
+2. The tool can only detect shield changes, not the cause of it. This means it cannot differentiate between it being destroyed and it getting reset by an Amp or the time limit.
+3. The log shows when the shields change, but not when they are broken. The only way to know when the shield element changes, is to analyze when the next shield is put up. For the last shield in a shield phase this cannot be done, so the time is shown as **?s**. The time of the final shield is added to the first leg break of the subsequent armor phase.
+4. The tool won't detect runs that are affected by the [pylon stacking bug](https://forums.warframe.com/topic/1272496-profit-taker-pylons-landing-on-top-of-each-other-prevent-the-bounty-from-completing/).
 
-Feel free to contact me in Discord about this tool: **ReVoltage#3425**
+Feel free to contact me on Discord about this tool: **Iterniam#5829**
