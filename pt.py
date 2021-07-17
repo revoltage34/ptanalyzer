@@ -19,7 +19,7 @@ from sty import fg, rs
 import colorama
 
 
-VERSION = "v2.2"
+VERSION = "v2.3"
 follow_mode = False  # False -> analyze mode
 
 dt_dict = {
@@ -91,7 +91,7 @@ def time_str(seconds: float, format_: Literal['brackets', 'units']) -> str:
         if seconds < 60:
             return f'{int(seconds % 60)}s {int(seconds % 1 * 1000)}ms'
         else:
-            return f'{int(seconds / 60)}m {int(seconds % 60):2d}s {int(seconds % 1 * 1000):3d}ms'
+            return f'{int(seconds / 60)}m {int(seconds % 60):02d}s {int(seconds % 1 * 1000):03d}ms'
     raise ValueError(f"Expected format_ to be 'brackets' or 'units' but was {format_}.")
 
 
@@ -130,7 +130,8 @@ class RelRun:
 
         self.pretty_print_run_summary()
 
-        print(f'{fg.li_red}From elevator to Profit-Taker took {self.pt_found:.3f}s.\n')
+        print(f'{fg.li_red}From elevator to Profit-Taker took {self.pt_found:.3f}s. '
+              f'Fight duration: {time_str(self.length() - self.pt_found, "units")}.\n')
 
         for i in [1, 2, 3, 4]:
             self.pretty_print_phase(i)
@@ -361,11 +362,13 @@ def read_run(log: Iterator[str], run_nr: int, require_heist_start=False) -> AbsR
 def print_summary(runs: list[RelRun]):
     assert len(runs) > 0
     best_run = min(runs, key=lambda run: run.length())
-    print(f'{fg.li_green}Best run:\t'
+    print(f'{fg.li_green}Best run:\t\t'
           f'{fg.li_cyan}{time_str(best_run.length(), "units")} '
           f'{fg.cyan}(Run #{best_run.run_nr})')
-    print(f'{fg.li_green}Average time:\t'
-          f'{fg.li_cyan}{time_str(sum((run.length() for run in runs)) / len(runs), "units")}\n\n')
+    print(f'{fg.li_green}Average time:\t\t'
+          f'{fg.li_cyan}{time_str(sum((run.length() for run in runs)) / len(runs), "units")}')
+    print(f'{fg.li_green}Average fight duration:\t'
+          f'{fg.li_cyan}{time_str(sum((run.length() - run.pt_found for run in runs)) / len(runs), "units")}\n\n')
 
 
 def get_file() -> str:
