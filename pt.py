@@ -410,8 +410,8 @@ def follow(filename: str):
                 if line[-1] == '\n':  # On newline, commit the line
                     yield ''.join(cur_line)
                     cur_line = []
-                else:  # No newline means we wait for more input before we yield it.
-                    sleep(1)
+            # No more lines are in the file - wait for more input before we yield it.
+            sleep(.1)
 
 
 def analyze_log(dropped_file: str):
