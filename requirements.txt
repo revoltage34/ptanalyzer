@@ -2,3 +2,4 @@ packaging
 requests
 colorama
 sty
+aenum
