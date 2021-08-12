@@ -4,7 +4,6 @@
 # https://github.com/revoltage34/ptanalyzer #
 # Requires Python 3.9                       #
 #############################################
-
 import requests  # For checking the version
 import packaging.version
 import traceback
@@ -12,6 +11,7 @@ import sys
 import os
 from collections import defaultdict
 from math import nan, isnan
+from statistics import median
 from time import sleep
 from typing import Iterator, Callable, Literal, Iterable
 
@@ -103,7 +103,7 @@ class RelRun:
                  squad_members: set[str],
                  pt_found: float,
                  phase_durations: dict[int, float],
-                 shields: dict[float, list[tuple[str, float]]],
+                 shield_phases: dict[float, list[tuple[str, float]]],
                  legs: dict[int, list[float]],
                  body_dur: dict[int, float],
                  pylon_dur: dict[int, float]):
@@ -112,7 +112,7 @@ class RelRun:
         self.squad_members = squad_members
         self.pt_found = pt_found
         self.phase_durations = phase_durations
-        self.shields = shields
+        self.shield_phases = shield_phases
         self.legs = legs
         self.body_dur = body_dur
         self.pylon_dur = pylon_dur
@@ -154,10 +154,10 @@ class RelRun:
         white_dash = f'{fg.white} - '
         print(f'{fg.li_green}> Phase {phase} {fg.li_cyan}{time_str(self.phase_durations[phase], "brackets")}')
 
-        if phase in self.shields:
-            shield_sum = sum(time for _, time in self.shields[phase] if not isnan(time))
+        if phase in self.shield_phases:
+            shield_sum = sum(time for _, time in self.shield_phases[phase] if not isnan(time))
             shield_str = f'{fg.white} | '.join((f'{fg.li_yellow}{s_type} {"?" if isnan(s_time) else f"{s_time:.3f}"}s'
-                                                for s_type, s_time in self.shields[phase]))
+                                                for s_type, s_time in self.shield_phases[phase]))
             print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:7.3f}s{white_dash}{fg.li_yellow}{shield_str}')
 
         normal_legs = [f'{fg.li_yellow}{time:.3f}s' for time in self.legs[phase][:4]]
@@ -169,32 +169,47 @@ class RelRun:
         if phase in self.pylon_dur:
             print(f'{fg.white} Pylons:\t{fg.li_green}{self.pylon_dur[phase]:7.3f}s')
 
-        if phase == 3 and self.shields[3.5]:  # Print phase 3.5
+        if phase == 3 and self.shield_phases[3.5]:  # Print phase 3.5
             print(f'{fg.white} Extra shields:\t\t   {fg.li_yellow}'
-                  f'{" | ".join((shield for shield, _ in self.shields[3.5]))}')
+                  f'{" | ".join((shield for shield, _ in self.shield_phases[3.5]))}')
         print('')  # to print an enter
 
     def pretty_print_sum_of_parts(self):
-        shield_sum = sum(time for times in self.shields.values() for _, time in times if not isnan(time))
-        leg_sum = sum(time for times in self.legs.values() for time in times)
-        body_sum = sum(self.body_dur.values())
-        pylon_sum = sum(self.pylon_dur.values())
-        total_sum = shield_sum + leg_sum + body_sum + pylon_sum
+        print(f'{fg.li_green}> Sum of parts {fg.li_cyan}{time_str(self.sum_of_parts, "brackets")}')
+        print(f'{fg.white} Shield change:\t{fg.li_green}{self.shield_sum:7.3f}s')
+        print(f'{fg.white} Leg Break:\t{fg.li_green}{self.leg_sum:7.3f}s')
+        print(f'{fg.white} Body Killed:\t{fg.li_green}{self.body_sum:7.3f}s')
+        print(f'{fg.white} Pylons:\t{fg.li_green}{self.pylon_sum:7.3f}s')
 
-        print(f'{fg.li_green}> Sum of parts {fg.li_cyan}{time_str(total_sum, "brackets")}')
-        print(f'{fg.white} Shield change:\t{fg.li_green}{shield_sum:7.3f}s')
-        print(f'{fg.white} Leg Break:\t{fg.li_green}{leg_sum:7.3f}s')
-        print(f'{fg.white} Body Killed:\t{fg.li_green}{body_sum:7.3f}s')
-        print(f'{fg.white} Pylons:\t{fg.li_green}{pylon_sum:7.3f}s')
+    @property
+    def shield_sum(self) -> float:
+        """Sum of shield times over all phases, excluding the nan values."""
+        return sum(time for times in self.shield_phases.values() for _, time in times if not isnan(time))
 
-    def sum_all_times(self) -> int:
-        sum_ = 0
-        for phase in [1, 2, 3, 4]:
-            sum_ += sum(time for _, time in self.shields[phase] if not isnan(time))
-            sum_ += sum(self.legs[phase])
-        sum_ += sum(self.body_dur.values())
-        sum_ += sum(self.pylon_dur.values())
-        return sum_
+    @property
+    def leg_sum(self) -> float:
+        """Sum of the leg times over all phases."""
+        return sum(time for times in self.legs.values() for time in times)
+
+    @property
+    def body_sum(self) -> float:
+        """Sum of the body times over all phases."""
+        return sum(self.body_dur.values())
+
+    @property
+    def pylon_sum(self) -> float:
+        """"Sum of the pylon times over all phases."""
+        return sum(self.pylon_dur.values())
+
+    @property
+    def sum_of_parts(self) -> float:
+        """"Sum of the individual parts of the fight. This cuts out some animations/waits."""
+        return self.shield_sum + self.leg_sum + self.body_sum + self.pylon_sum
+
+    @property
+    def shields(self) -> list[tuple[str, float]]:
+        """The shields without their phases, flattened."""
+        return [shield_tuple for shield_phase in self.shield_phases.values() for shield_tuple in shield_phase]
 
 
 class AbsRun:
@@ -205,7 +220,8 @@ class AbsRun:
         self.squad_members: set[str] = set()
         self.heist_start = 0.0
         self.pt_found = 0.0
-        self.shields: dict[float, list[tuple[str, float]]] = defaultdict(list)  # phase -> list((type, absolute time))
+        self.shield_phases: dict[float, list[tuple[str, float]]] = defaultdict(list)
+        # phase -> list((type, absolute time))
         self.legs: dict[int, list[float]] = defaultdict(list)  # phase -> list(absolute time)
         self.body_vuln: dict[int, float] = {}  # phase -> vuln-time
         self.body_kill: dict[int, float] = {}  # phase -> kill-time
@@ -217,15 +233,15 @@ class AbsRun:
 
     def post_process(self):
         # Take the final shield from shield phase 3.5 and prepend it to phase 4.
-        if len(self.shields[3.5]) > 0:  # If the player is too fast, there won't be phase 3.5 shields.
-            self.shields[4] = [self.shields[3.5].pop()] + self.shields[4]
+        if len(self.shield_phases[3.5]) > 0:  # If the player is too fast, there won't be phase 3.5 shields.
+            self.shield_phases[4] = [self.shield_phases[3.5].pop()] + self.shield_phases[4]
         # Remove the extra shield from phase 4.
-        self.shields[4].pop()
+        self.shield_phases[4].pop()
 
     def to_rel(self) -> RelRun:
         pt_found = self.pt_found - self.heist_start
         phase_durations = {}
-        shields = defaultdict(list)
+        shield_phases = defaultdict(list)
         legs = defaultdict(list)
         body_dur = {}
         pylon_dur = {}
@@ -233,12 +249,12 @@ class AbsRun:
         previous_value = self.pt_found
         for phase in [1, 2, 3, 4]:
             if phase in [1, 3, 4]:  # Phases with shield phases
-                for i in range(len(self.shields[phase]) - 1):
-                    shield_type, _ = self.shields[phase][i]
-                    _, shield_end = self.shields[phase][i + 1]
-                    shields[phase].append((shield_type, shield_end - previous_value))
+                for i in range(len(self.shield_phases[phase]) - 1):
+                    shield_type, _ = self.shield_phases[phase][i]
+                    _, shield_end = self.shield_phases[phase][i + 1]
+                    shield_phases[phase].append((shield_type, shield_end - previous_value))
                     previous_value = shield_end
-                shields[phase].append((self.shields[phase][-1][0], nan))
+                shield_phases[phase].append((self.shield_phases[phase][-1][0], nan))
             # Every phase has an armor phase
             for leg in self.legs[phase]:
                 legs[phase].append(leg - previous_value)
@@ -254,10 +270,10 @@ class AbsRun:
             phase_durations[phase] = previous_value - self.heist_start
 
         # Set phase 3.5 shields
-        shields[3.5] = [(shield, nan) for shield, _ in self.shields[3.5]]
+        shield_phases[3.5] = [(shield, nan) for shield, _ in self.shield_phases[3.5]]
 
         return RelRun(self.run_nr, self.nickname, self.squad_members, pt_found,
-                      phase_durations, shields, legs, body_dur, pylon_dur)
+                      phase_durations, shield_phases, legs, body_dur, pylon_dur)
 
 
 def time_from_line(line: str) -> float:
@@ -297,10 +313,10 @@ def register_phase(log: Iterator[str], run: AbsRun, phase: int):
         if match == 0:  # Shield switch
             # Shield_phase '3.5' is for when shields swap during the pylon phase in phase 3.
             shield_phase = 3.5 if phase == 3 and 3 in run.pylon_start else phase
-            run.shields[shield_phase].append(shield_from_line(line))
+            run.shield_phases[shield_phase].append(shield_from_line(line))
 
-            if follow_mode and len(run.shields[1]) == 1:  # The first shield can help determine whether to abort.
-                print(f'{fg.white}First shield: {fg.li_cyan}{run.shields[phase][0][0]}')
+            if follow_mode and len(run.shield_phases[1]) == 1:  # The first shield can help determine whether to abort.
+                print(f'{fg.white}First shield: {fg.li_cyan}{run.shield_phases[phase][0][0]}')
         elif match == 1:  # Leg kill
             run.legs[phase].append(time_from_line(line))
         elif match == 2:  # Body vulnerable / phase 4 end
@@ -365,10 +381,20 @@ def print_summary(runs: list[RelRun]):
     print(f'{fg.li_green}Best run:\t\t'
           f'{fg.li_cyan}{time_str(best_run.length(), "units")} '
           f'{fg.cyan}(Run #{best_run.run_nr})')
-    print(f'{fg.li_green}Average time:\t\t'
-          f'{fg.li_cyan}{time_str(sum((run.length() for run in runs)) / len(runs), "units")}')
-    print(f'{fg.li_green}Average fight duration:\t'
-          f'{fg.li_cyan}{time_str(sum((run.length() - run.pt_found for run in runs)) / len(runs), "units")}\n\n')
+    print(f'{fg.li_green}Median time:\t\t'
+          f'{fg.li_cyan}{time_str(median(run.length() for run in runs), "units")}')
+    print(f'{fg.li_green}Median fight duration:\t'
+          f'{fg.li_cyan}{time_str(median(run.length() - run.pt_found for run in runs), "units")}\n')
+    print(f'{fg.li_green}Median sum of parts {fg.li_cyan}'
+          f'{time_str(median(run.sum_of_parts for run in runs), "brackets")}')
+    print(f'{fg.white} Median shield change:\t{fg.li_green}'
+          f'{median(run.shield_sum for run in runs):7.3f}s')
+    print(f'{fg.white} Median leg break:\t{fg.li_green}'
+          f'{median(run.leg_sum for run in runs):7.3f}s')
+    print(f'{fg.white} Median body killed:\t{fg.li_green}'
+          f'{median(run.body_sum for run in runs):7.3f}s')
+    print(f'{fg.white} Median pylons:\t\t{fg.li_green}'
+          f'{median(run.pylon_sum for run in runs):7.3f}s')
 
 
 def get_file() -> str:
@@ -388,7 +414,7 @@ def get_file() -> str:
 def error_msg():
     traceback.print_exc()
     print(
-        color("\nAn error might have occured, please screenshot this and report this along with your EE.log attached.",
+        color("\nAn error might have occurred, please screenshot this and report this along with your EE.log attached.",
               fg.li_red))
     input('Press ENTER to exit..')
     sys.exit()
@@ -441,7 +467,8 @@ def analyze_log(dropped_file: str):
         print(f'{fg.white}No Profit-Taker runs found.\n'
               f'Note that you have to be host throughout the entire run for it to show up as a valid run.')
 
-    input(f'{rs.fg}Press ENTER to exit...')
+    print(f'{rs.fg}Press ENTER to exit...')
+    input()  # input(prompt) doesn't work with color coding, so we separate it in a print and an empty input.
 
 
 def follow_log(filename: str):
