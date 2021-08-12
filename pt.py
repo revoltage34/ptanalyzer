@@ -19,7 +19,7 @@ from sty import fg, rs
 import colorama
 
 
-VERSION = "v2.3"
+VERSION = "v2.3.1"
 follow_mode = False  # False -> analyze mode
 
 dt_dict = {
@@ -476,7 +476,8 @@ def check_version():
                   f'To download the new update, visit https://github.com/revoltage34/ptanalyzer/releases/latest.')
         else:
             print(f'{fg.li_grey}Version is up-to-date.      ')
-    except (requests.exceptions.RequestException, KeyError):  # Internet down, slow or unexpected Github response.
+    except (requests.exceptions.RequestException, KeyError, ValueError):
+        # Possible errors are: Internet down, slow or unexpected Github response, or a failed DNS lookup.
         print(f'{fg.red}Unable to connect to Github to check for new versions. Continuing...')
         return
 

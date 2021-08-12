@@ -1,0 +1,4 @@
+packaging
+requests
+colorama
+sty
