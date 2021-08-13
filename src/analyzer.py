@@ -61,8 +61,39 @@ class RelRun:
     def __str__(self):
         return '\n'.join((f'{key}: {val}' for key, val in vars(self).items()))
 
+    @property
     def length(self):
         return self.phase_durations[4]
+
+    @property
+    def shield_sum(self) -> float:
+        """Sum of shield times over all phases, excluding the nan values."""
+        return sum(time for times in self.shield_phases.values() for _, time in times if not isnan(time))
+
+    @property
+    def leg_sum(self) -> float:
+        """Sum of the leg times over all phases."""
+        return sum(time for times in self.legs.values() for time in times)
+
+    @property
+    def body_sum(self) -> float:
+        """Sum of the body times over all phases."""
+        return sum(self.body_dur.values())
+
+    @property
+    def pylon_sum(self) -> float:
+        """"Sum of the pylon times over all phases."""
+        return sum(self.pylon_dur.values())
+
+    @property
+    def sum_of_parts(self) -> float:
+        """"Sum of the individual parts of the fight. This cuts out some animations/waits."""
+        return self.shield_sum + self.leg_sum + self.body_sum + self.pylon_sum
+
+    @property
+    def shields(self) -> list[tuple[str, float]]:
+        """The shields without their phases, flattened."""
+        return [shield_tuple for shield_phase in self.shield_phases.values() for shield_tuple in shield_phase]
 
     def pretty_print(self):
         print(color('-' * 72, fg.white))  # header
@@ -70,7 +101,7 @@ class RelRun:
         self.pretty_print_run_summary()
 
         print(f'{fg.li_red}From elevator to Profit-Taker took {self.pt_found:.3f}s. '
-              f'Fight duration: {time_str(self.length() - self.pt_found, "units")}.\n')
+              f'Fight duration: {time_str(self.length - self.pt_found, "units")}.\n')
 
         for i in [1, 2, 3, 4]:
             self.pretty_print_phase(i)
@@ -82,7 +113,7 @@ class RelRun:
     def pretty_print_run_summary(self):
         players = oxfordcomma([self.nickname] + list(self.squad_members - {self.nickname}))
         run_info = f'{fg.cyan}Profit-Taker Run #{self.run_nr} by {fg.li_cyan}{players}{fg.cyan} cleared in ' \
-                   f'{fg.li_cyan}{time_str(self.length(), "units")}'
+                   f'{fg.li_cyan}{time_str(self.length, "units")}'
         if self.best_run:
             run_info += f'{fg.white} - {fg.li_magenta}Best run!'
         elif self.best_run_yet:
@@ -119,36 +150,6 @@ class RelRun:
         print(f'{fg.white} Leg Break:\t{fg.li_green}{self.leg_sum:7.3f}s')
         print(f'{fg.white} Body Killed:\t{fg.li_green}{self.body_sum:7.3f}s')
         print(f'{fg.white} Pylons:\t{fg.li_green}{self.pylon_sum:7.3f}s')
-
-    @property
-    def shield_sum(self) -> float:
-        """Sum of shield times over all phases, excluding the nan values."""
-        return sum(time for times in self.shield_phases.values() for _, time in times if not isnan(time))
-
-    @property
-    def leg_sum(self) -> float:
-        """Sum of the leg times over all phases."""
-        return sum(time for times in self.legs.values() for time in times)
-
-    @property
-    def body_sum(self) -> float:
-        """Sum of the body times over all phases."""
-        return sum(self.body_dur.values())
-
-    @property
-    def pylon_sum(self) -> float:
-        """"Sum of the pylon times over all phases."""
-        return sum(self.pylon_dur.values())
-
-    @property
-    def sum_of_parts(self) -> float:
-        """"Sum of the individual parts of the fight. This cuts out some animations/waits."""
-        return self.shield_sum + self.leg_sum + self.body_sum + self.pylon_sum
-
-    @property
-    def shields(self) -> list[tuple[str, float]]:
-        """The shields without their phases, flattened."""
-        return [shield_tuple for shield_phase in self.shield_phases.values() for shield_tuple in shield_phase]
 
 
 class AbsRun:
@@ -219,6 +220,7 @@ class Analyzer:
 
     def __init__(self):
         self.follow_mode = False
+        self.runs: list[RelRun] = []
 
     def run(self):
         filename = self.get_file()
@@ -245,12 +247,12 @@ class Analyzer:
         known_size = os.stat(filename).st_size
         with open(filename, 'r', encoding='latin-1') as file:
             # Start infinite loop
-            cur_line = []  # Store multiple parts of the same line to deal with the logger comitting incomplete lines.
+            cur_line = []  # Store multiple parts of the same line to deal with the logger committing incomplete lines.
             while True:
                 if (new_size := os.stat(filename).st_size) < known_size:
                     print(f'{fg.white}Restart detected.')
                     file.seek(0)  # Go back to the start of the file
-                    print('Succesfully reconnected to ee.log. Now listening for new Profit-Taker runs.')
+                    print('Successfully reconnected to ee.log. Now listening for new Profit-Taker runs.')
                 known_size = new_size
 
                 # Yield lines until the last line of file and follow the end on a delay
@@ -265,23 +267,22 @@ class Analyzer:
     def analyze_log(self, dropped_file: str):
         with open(dropped_file, 'r', encoding='latin-1') as it:
             try:
-                runs = []
                 require_heist_start = True
                 while True:
                     try:
-                        runs.append(self.read_run(it, len(runs) + 1, require_heist_start).to_rel())
+                        self.runs.append(self.read_run(it, len(self.runs) + 1, require_heist_start).to_rel())
                         require_heist_start = True
                     except RunAbort as abort:
                         require_heist_start = abort.require_heist_start
             except LogEnd:
                 pass
-        if len(runs) > 0:
-            best_run = min(runs, key=lambda run: run.length())
+        if len(self.runs) > 0:
+            best_run = min(self.runs, key=lambda run_: run_.length)
             best_run.best_run = True
-            for run in runs:
+            for run in self.runs:
                 run.pretty_print()
 
-            self.print_summary(runs)
+            self.print_summary()
         else:
             print(f'{fg.white}No Profit-Taker runs found.\n'
                   f'Note that you have to be host throughout the entire run for it to show up as a valid run.')
@@ -292,19 +293,18 @@ class Analyzer:
     def follow_log(self, filename: str):
         it = Analyzer.follow(filename)
         best_time = float('inf')
-        runs = []
         require_heist_start = True
         while True:
             try:
-                run = self.read_run(it, len(runs) + 1, require_heist_start).to_rel()
-                runs.append(run)
+                run = self.read_run(it, len(self.runs) + 1, require_heist_start).to_rel()
+                self.runs.append(run)
                 require_heist_start = True
 
-                if run.length() < best_time:
-                    best_time = run.length()
+                if run.length < best_time:
+                    best_time = run.length
                     run.best_run_yet = True
                 run.pretty_print()
-                self.print_summary(runs)
+                self.print_summary()
             except RunAbort as abort:
                 require_heist_start = abort.require_heist_start
 
@@ -332,22 +332,12 @@ class Analyzer:
     def register_phase(self, log: Iterator[str], run: AbsRun, phase: int):
         kill_sequence = 0
         while True:  # match exists for phases 1-3, kill_sequence for phase 4.
-            line, match = Analyzer.skip_until_one_of(
-                log,
-                [lambda line: Constants.SHIELD_SWITCH in line,
-                 lambda line: Constants.LEG_KILL in line,
-                 lambda line: Constants.BODY_VULNERABLE in line,  # is also phase 4 end
-                 lambda line: Constants.STATE_CHANGE in line,
-                 lambda line: Constants.PYLONS_LAUNCHED in line,
-                 lambda line: Constants.PHASE_1_START in line,
-                 lambda line: phase != Constants.FINAL_PHASE and \
-                              Constants.PHASE_ENDS[phase] in line,
-                 lambda line: Constants.NICKNAME in line,
-                 lambda line: Constants.ELEVATOR_EXIT in line,
-                 lambda line: Constants.HEIST_START in line,  # Functions as abort as well
-                 lambda line: Constants.HOST_MIGRATION in line,
-                 lambda line: Constants.SQUAD_MEMBER in line])
-            if match == 0:  # Shield switch
+            try:
+                line = next(log)
+            except StopIteration:
+                raise LogEnd()
+
+            if Constants.SHIELD_SWITCH in line:  # Shield switch
                 # Shield_phase '3.5' is for when shields swap during the pylon phase in phase 3.
                 shield_phase = 3.5 if phase == 3 and 3 in run.pylon_start else phase
                 run.shield_phases[shield_phase].append(Analyzer.shield_from_line(line))
@@ -355,39 +345,39 @@ class Analyzer:
                 # The first shield can help determine whether to abort.
                 if self.follow_mode and len(run.shield_phases[1]) == 1:
                     print(f'{fg.white}First shield: {fg.li_cyan}{run.shield_phases[phase][0][0]}')
-            elif match == 1:  # Leg kill
+            elif Constants.LEG_KILL in line:  # Leg kill
                 run.legs[phase].append(Analyzer.time_from_line(line))
-            elif match == 2:  # Body vulnerable / phase 4 end
+            elif Constants.BODY_VULNERABLE in line:  # Body vulnerable / phase 4 end
                 if kill_sequence == 0:  # Only register the first invuln message on each phase
                     run.body_vuln[phase] = Analyzer.time_from_line(line)
                 kill_sequence += 1  # 3x BODY_VULNERABLE in one phase means PT dies.
                 if kill_sequence == 3:  # PT dies.
                     run.body_kill[phase] = Analyzer.time_from_line(line)
                     return
-            elif match == 3:  # Generic state change
+            elif Constants.STATE_CHANGE in line:  # Generic state change
                 # Generic match on state change to find things we can't reliably find otherwise
                 new_state = int(line.split()[8])
                 # State 3, 5 and 6 are body kills for phases 1, 2 and 3.
                 if new_state in [3, 5, 6]:
                     run.body_kill[phase] = Analyzer.time_from_line(line)
-            elif match == 4:  # Pylons launched
+            elif Constants.PYLONS_LAUNCHED in line:  # Pylons launched
                 run.pylon_start[phase] = Analyzer.time_from_line(line)
-            elif match == 5:  # Profit-Taker found
+            elif Constants.PHASE_1_START in line:  # Profit-Taker found
                 run.pt_found = Analyzer.time_from_line(line)
-            elif match == 6:  # Phase endings (excludes phase 4)
+            elif Constants.PHASE_ENDS[phase] in line and phase != Constants.FINAL_PHASE:  # Phase endings minus phase 4
                 if phase in [1, 3]:  # Ignore phase 2 as it already matches body_kill.
                     run.pylon_end[phase] = Analyzer.time_from_line(line)
                 return
-            elif match == 7:  # Nickname
+            elif Constants.NICKNAME in line:  # Nickname
                 run.nickname = line.replace(',', '').split()[-2]
-            elif match == 8:  # Elevator exit (start of speedrun timing)
+            elif Constants.ELEVATOR_EXIT in line:  # Elevator exit (start of speedrun timing)
                 if not run.heist_start:  # Only use the first time that the zone is left aka heist is started.
                     run.heist_start = Analyzer.time_from_line(line)
-            elif match == 9:  # New heist start found
+            elif Constants.HEIST_START in line:  # New heist start found
                 raise RunAbort(require_heist_start=False)
-            elif match == 10:  # Host migration
+            elif Constants.HOST_MIGRATION in line:  # Host migration
                 raise RunAbort(require_heist_start=True)
-            elif match == 11:  # Squad member
+            elif Constants.SQUAD_MEMBER in line:  # Squad member
                 run.squad_members.add(line.split()[-4])
 
     @staticmethod
@@ -408,24 +398,23 @@ class Analyzer:
         except StopIteration:
             raise LogEnd()
 
-    @staticmethod
-    def print_summary(runs: list[RelRun]):  # TODO: Make runs go based off of self.runs
-        assert len(runs) > 0
-        best_run = min(runs, key=lambda run: run.length())
+    def print_summary(self):
+        assert len(self.runs) > 0
+        best_run = min(self.runs, key=lambda run: run.length)
         print(f'{fg.li_green}Best run:\t\t'
-              f'{fg.li_cyan}{time_str(best_run.length(), "units")} '
+              f'{fg.li_cyan}{time_str(best_run.length, "units")} '
               f'{fg.cyan}(Run #{best_run.run_nr})')
         print(f'{fg.li_green}Median time:\t\t'
-              f'{fg.li_cyan}{time_str(median(run.length() for run in runs), "units")}')
+              f'{fg.li_cyan}{time_str(median(run.length for run in self.runs), "units")}')
         print(f'{fg.li_green}Median fight duration:\t'
-              f'{fg.li_cyan}{time_str(median(run.length() - run.pt_found for run in runs), "units")}\n')
+              f'{fg.li_cyan}{time_str(median(run.length - run.pt_found for run in self.runs), "units")}\n')
         print(f'{fg.li_green}Median sum of parts {fg.li_cyan}'
-              f'{time_str(median(run.sum_of_parts for run in runs), "brackets")}')
+              f'{time_str(median(run.sum_of_parts for run in self.runs), "brackets")}')
         print(f'{fg.white} Median shield change:\t{fg.li_green}'
-              f'{median(run.shield_sum for run in runs):7.3f}s')
+              f'{median(run.shield_sum for run in self.runs):7.3f}s')
         print(f'{fg.white} Median leg break:\t{fg.li_green}'
-              f'{median(run.leg_sum for run in runs):7.3f}s')
+              f'{median(run.leg_sum for run in self.runs):7.3f}s')
         print(f'{fg.white} Median body killed:\t{fg.li_green}'
-              f'{median(run.body_sum for run in runs):7.3f}s')
+              f'{median(run.body_sum for run in self.runs):7.3f}s')
         print(f'{fg.white} Median pylons:\t\t{fg.li_green}'
-              f'{median(run.pylon_sum for run in runs):7.3f}s')
+              f'{median(run.pylon_sum for run in self.runs):7.3f}s')
