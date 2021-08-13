@@ -9,6 +9,7 @@ import traceback
 
 import requests  # For checking the version
 import packaging.version
+from requests import RequestException
 
 from sty import fg
 import colorama
@@ -21,6 +22,7 @@ VERSION = "v2.3.1"
 
 def check_version():
     print(f'{fg.li_grey}Scanning for updates...', end='\r')
+    # noinspection PyBroadException
     try:
         response = requests.get("https://api.github.com/repos/revoltage34/ptanalyzer/releases/latest", timeout=2)
         json = response.json()
@@ -31,19 +33,23 @@ def check_version():
                   f'To download the new update, visit https://github.com/revoltage34/ptanalyzer/releases/latest.')
         else:
             print(f'{fg.li_grey}Version is up-to-date.      ')
-    except (requests.exceptions.RequestException, KeyError, ValueError):
-        # Possible errors are: Internet down, slow or unexpected Github response, or a failed DNS lookup.
-        print(f'{fg.red}Unable to connect to Github to check for new versions. Continuing...')
-        return
+    except RequestException:  # Generic IO failure
+        print(f'{fg.red}Unable to connect to Github to check for newer versions. Continuing...')
+    except ValueError:  # DNS failure
+        print(f'{fg.red}Unable to resolve the ip address of Github.com to check for newer versions. Continuing...')
+    except KeyError:  # Unexpected Github response, including being rate limited.
+        print(f'{fg.red}Github sent back an unexpected response while checking for newer versions. Continuing...')
+    except Exception:  # Catch-all
+        traceback.print_exc()
+        print(f'{fg.red}An unknown error occurred while checking for newer versions. Please screenshot this and report'
+              f'this along with your EE.log attached.')
 
 
 def error_msg():
     traceback.print_exc()
-    print(
-        color("\nAn error might have occurred, please screenshot this and report this along with your EE.log attached.",
-              fg.li_red))
+    print(color('\nAn unknown error occurred. Please screenshot this and report this along with your EE.log attached.',
+                fg.li_red))
     input('Press ENTER to exit..')
-    sys.exit()
 
 
 def main():
