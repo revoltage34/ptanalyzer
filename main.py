@@ -4,7 +4,6 @@
 # https://github.com/revoltage34/ptanalyzer #
 # Requires Python 3.9                       #
 #############################################
-import sys
 import traceback
 
 import requests  # For checking the version
@@ -17,7 +16,7 @@ import colorama
 from src.analyzer import Analyzer
 from src.utils import color
 
-VERSION = "v2.4"
+VERSION = "v2.4.1"
 
 
 def check_version():

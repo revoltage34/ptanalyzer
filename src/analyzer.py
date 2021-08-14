@@ -234,12 +234,12 @@ class Analyzer:
             self.follow_mode = False
             return sys.argv[1]
         except IndexError:
-            print(fr"{fg.li_grey}Opening Warframe's default log from %LOCALAPPDATA%\Warframe\EE.log in follow mode.")
+            print(fr"{fg.li_grey}Opening Warframe's default log from %LOCALAPPDATA%/Warframe/EE.log in follow mode.")
             print('Follow mode means that runs will appear as you play. '
                   'The first shield will also be printed when Profit-Taker spawns.')
             print('Note that you can analyze another file by dragging it into the exe file.')
             self.follow_mode = True
-            return os.getenv('LOCALAPPDATA') + r'\Warframe\EE.log'
+            return os.getenv('LOCALAPPDATA') + r'/Warframe/EE.log'
 
     @staticmethod
     def follow(filename: str):
