@@ -239,7 +239,14 @@ class Analyzer:
                   'The first shield will also be printed when Profit-Taker spawns.')
             print('Note that you can analyze another file by dragging it into the exe file.')
             self.follow_mode = True
-            return os.getenv('LOCALAPPDATA') + r'/Warframe/EE.log'
+            try:
+                return os.getenv('LOCALAPPDATA') + r'/Warframe/EE.log'
+            except TypeError:
+                print(f'{fg.li_red}Hi there Linux user! Check the README on github.com/revoltage34/ptanalyzer or '
+                      f'idalon.com/pt to find out how to get follow mode to work.')
+                print(f'{rs.fg}Press ENTER to exit...')
+                input()  # input(prompt) doesn't work with color coding, so we separate it from the print.
+                exit(-1)
 
     @staticmethod
     def follow(filename: str):
