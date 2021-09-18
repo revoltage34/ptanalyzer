@@ -4,6 +4,7 @@
 # https://github.com/revoltage34/ptanalyzer #
 # Requires Python 3.9                       #
 #############################################
+import socket
 import traceback
 
 import requests  # For checking the version
@@ -16,28 +17,39 @@ import colorama
 from src.analyzer import Analyzer
 from src.utils import color
 
-VERSION = "v2.4.1"
+VERSION = 'v2.5'
 
 
 def check_version():
     print(f'{fg.li_grey}Scanning for updates...', end='\r')
+
+    proxy = False
+    try:
+        socket.getaddrinfo('api.github.com', 80)
+    except socket.gaierror:  # Used to catch DNS failure, also catches internet is offline.
+        proxy = True
+
     # noinspection PyBroadException
     try:
-        response = requests.get("https://api.github.com/repos/revoltage34/ptanalyzer/releases/latest", timeout=2)
-        json = response.json()
-        latest_version = json['tag_name']  # KeyError -> got a non-200 OK message
+        if proxy:
+            json = requests.get('https://utils.idalon.com/v1/pt/releases', timeout=2).json()
+            latest_version = json['items'][0]['version']
+            download_link = 'https://idalon.com/pt'
+        else:
+            json = requests.get('https://api.github.com/repos/revoltage34/ptanalyzer/releases/latest', timeout=2).json()
+            latest_version = json['tag_name']  # KeyError -> got a non-200 OK message
+            download_link = 'https://github.com/revoltage34/ptanalyzer/releases/latest'
+
         if packaging.version.parse(VERSION) < packaging.version.parse(latest_version):
             print(f'{fg.li_green}New version detected!       \n'
                   f'{fg.white}You are currently on version {VERSION}, whereas the latest is {latest_version}.\n'
-                  f'To download the new update, visit https://github.com/revoltage34/ptanalyzer/releases/latest.')
+                  f'To download the new update, visit {download_link}.')
         else:
-            print(f'{fg.li_grey}Version is up-to-date.      ')
+            print(f'{fg.li_grey}Version is up-to-date.      ')  # Whitespace necessary to overwrite previous message.
     except RequestException:  # Generic IO failure
-        print(f'{fg.red}Unable to connect to Github to check for newer versions. Continuing...')
-    except ValueError:  # DNS failure
-        print(f'{fg.red}Unable to resolve the ip address of Github.com to check for newer versions. Continuing...')
+        print(f'{fg.red}Unable to check for newer versions. Continuing...')
     except KeyError:  # Unexpected Github response, including being rate limited.
-        print(f'{fg.red}Github sent back an unexpected response while checking for newer versions. Continuing...')
+        print(f'{fg.red}Received an unexpected response while checking for newer versions. Continuing...')
     except Exception:  # Catch-all
         traceback.print_exc()
         print(f'{fg.red}An unknown error occurred while checking for newer versions. Please screenshot this and report'
