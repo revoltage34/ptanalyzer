@@ -1,5 +1,5 @@
 # Profit-Taker Analyzer
-**Approved tool by Warframe Speedrun!
+**Approved tool by the Warframe Speedrunning community!  
  https://www.speedrun.com/wf/resources** 
 
 This tool analyzes Profit-Taker runs from based on Warframe's log file, EE.log.  
@@ -22,14 +22,15 @@ Linux users will have to export the folder that contains /Warframe/EE.log as LOC
 2. Follows the game's log file analyze your runs live (survives game restarts!)
 3. Displays the first shield element as soon as Profit-Taker spawns in follow mode.
 4. Marks the best run and displays timestamps and phase durations.
-5. Detects the [leg regen bug](https://forums.warframe.com/topic/1228077-reliable-repro-cause-known-profit-taker-leg-regen-recovering-from-the-pylon-phase-fully-heals-its-legs-5-seconds-after-theyve-already-been-vulnerable/?tab=comments#comment-11997156) and marks the extra legs in red.
-6. Supports multiple Profit-Taker runs per EE.log
-7. Automatically checks for newer versions.
+5. Supports multiple Profit-Taker runs per EE.log
+6. Detects the [leg regen bug](https://forums.warframe.com/topic/1228077-reliable-repro-cause-known-profit-taker-leg-regen-recovering-from-the-pylon-phase-fully-heals-its-legs-5-seconds-after-theyve-already-been-vulnerable/?tab=comments#comment-11997156) and marks the extra legs in red.
+7. Detects bugs that lead to incomplete logs and indicates what information is missing.  
+8. Automatically checks for newer versions.
 
 **Limitations:**
 1. The tool can only detect runs where you are the host.
 2. The tool can only detect shield changes, not the cause of it. This means it cannot differentiate between it being destroyed and it getting reset by an Amp or the time limit.
 3. The log shows when the shields change, but not when they are broken. The only way to know when the shield element changes, is to analyze when the next shield is put up. For the last shield in a shield phase this cannot be done, so the time is shown as **?s**. The time of the final shield is added to the first leg break of the subsequent armor phase.
-4. The tool won't detect runs that are affected by the [pylon stacking bug](https://forums.warframe.com/topic/1272496-profit-taker-pylons-landing-on-top-of-each-other-prevent-the-bounty-from-completing/) or other bugs that mess with the logs.
+4. The tool won't show stats runs that are affected by the [pylon stacking bug](https://forums.warframe.com/topic/1272496-profit-taker-pylons-landing-on-top-of-each-other-prevent-the-bounty-from-completing/) or other bugs that mess with the logs.
 
 Feel free to contact me on Discord about this tool: **Iterniam#5829**

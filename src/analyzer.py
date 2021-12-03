@@ -9,6 +9,7 @@ from typing import Iterator, Callable
 from sty import rs, fg
 
 from src.enums.damage_types import DT
+from src.exceptions.bugged_run import BuggedRun
 from src.exceptions.log_end import LogEnd
 from src.exceptions.run_abort import RunAbort
 from src.utils import color, time_str, oxfordcomma
@@ -171,14 +172,78 @@ class AbsRun:
     def __str__(self):
         return '\n'.join((f'{key}: {val}' for key, val in vars(self).items()))
 
-    def post_process(self):
+    def post_process(self) -> None:
+        """
+        Reorders some timing information to be more consistent with what we expect rather than what we get
+        Throws `BuggedRun` if no shield elements were recorded for the final shield phase.
+        """
         # Take the final shield from shield phase 3.5 and prepend it to phase 4.
         if len(self.shield_phases[3.5]) > 0:  # If the player is too fast, there won't be phase 3.5 shields.
             self.shield_phases[4] = [self.shield_phases[3.5].pop()] + self.shield_phases[4]
+
         # Remove the extra shield from phase 4.
-        self.shield_phases[4].pop()
+        try:
+            self.shield_phases[4].pop()
+        except IndexError:
+            raise BuggedRun('No shields were recorded in phase 4.') from None
+
+    def check_run_integrity(self) -> None:
+        """
+        Checks whether all required information is present to convert the run into a run with relative timings.
+        If not all information is present, this method throws BuggedRun with the failure reasons.
+        """
+        failure_reasons = []
+        for phase in [1, 2, 3, 4]:
+            # Shield phases (phase 1, 3, 4) have at least 3 shields per phase.
+            # The default is 5 shields, but because shots damage is capped to the shield element phase's max HP
+            # instead of the remaining phase's max HP, a minimum of 3 elements per shield phase can be achieved
+            if phase in [1, 3, 4] and len(self.shield_phases[phase]) < 3:
+                failure_reasons.append(f'{len(self.shield_phases[phase])} shield elements were recorded in phase '
+                                       f'{phase} but at least 3 shield elements were expected.')
+
+            # Every phase has an armor phase, and every armor phase needs at least 4 legs to be taken down
+            # When less than 4 legs are recorded to be taken out, obviously there's a bug
+            if len(self.legs[phase]) < 4:
+                failure_reasons.append(f'{len(self.legs[phase])} legs were recorded in phase {phase} but at least 4 '
+                                       f'legs were expected.')
+
+            # It is intended for 4 legs to be taken out. Because of the leg regen bug, up to 8 legs can be taken out
+            # If somehow more than 8 legs are taken out per phase, that signifies an even worse bug
+            # Since 'even worse bugs' tend to corrupt the logs, so we print a warning to the user
+            # This tool should still be able to convert and display it, so it doesn't fail the integrity check
+            if len(self.legs[phase]) > 8:
+                print(color(f'{len(self.legs[phase])} leg kills were recorded for phase {phase}.\n'
+                            f'If you have a recording of this run and the fight indeed bugged out, please '
+                            f'report the bug to Warframe.\n'
+                            f'If you think the bug is with the analyzer, contact the creator of this tool instead.',
+                            fg.li_red))
+
+            # The time at which the body becomes vulnerable and is killed during the armor phase has to be present
+            if phase not in self.body_vuln:
+                failure_reasons.append(f'Profit-Taker\'s body was not recorded as being vulnerable in phase {phase}.')
+            if phase not in self.body_kill:
+                failure_reasons.append(f'Profit-Taker\'s body was not recorded as being killed in phase {phase}.')
+
+            # If in the pylon phases (phase 1 and 3) the pylon start- or end time are not recorded, then the
+            # logs (and probably fight) are bugged. The run cannot be converted.
+            if phase in [1, 3]:
+                if phase not in self.pylon_start:
+                    failure_reasons.append(f'No pylon phase start time was recorded in phase {phase}.')
+                if phase not in self.pylon_end:
+                    failure_reasons.append(f'No pylon phase end time was recorded in phase {phase}.')
+
+        if failure_reasons:
+            raise BuggedRun(failure_reasons)
+        # Else: return none implicitly
 
     def to_rel(self) -> RelRun:
+        """
+        Converts this AbsRun with absolute timings to RelRun with relative timings.
+
+        If not all information is present, a `BuggedRun` exception is thrown.
+        """
+        self.check_run_integrity()
+
         pt_found = self.pt_found - self.heist_start
         phase_durations = {}
         shield_phases = defaultdict(list)
@@ -189,11 +254,13 @@ class AbsRun:
         previous_value = self.pt_found
         for phase in [1, 2, 3, 4]:
             if phase in [1, 3, 4]:  # Phases with shield phases
+                # Register the times and elements for the shields
                 for i in range(len(self.shield_phases[phase]) - 1):
                     shield_type, _ = self.shield_phases[phase][i]
                     _, shield_end = self.shield_phases[phase][i + 1]
                     shield_phases[phase].append((shield_type, shield_end - previous_value))
                     previous_value = shield_end
+                # The final shield of each phase doesn't have a time
                 shield_phases[phase].append((self.shield_phases[phase][-1][0], nan))
             # Every phase has an armor phase
             for leg in self.legs[phase]:
@@ -209,7 +276,7 @@ class AbsRun:
             # Set phase duration
             phase_durations[phase] = previous_value - self.heist_start
 
-        # Set phase 3.5 shields
+        # Set phase 3.5 shields (possibly none on very fast runs)
         shield_phases[3.5] = [(shield, nan) for shield, _ in self.shield_phases[3.5]]
 
         return RelRun(self.run_nr, self.nickname, self.squad_members, pt_found,
@@ -281,6 +348,9 @@ class Analyzer:
                         require_heist_start = True
                     except RunAbort as abort:
                         require_heist_start = abort.require_heist_start
+                    except BuggedRun as buggedRun:
+                        print(color(str(buggedRun), fg.li_red))  # Prints reasons why the run failed
+                        require_heist_start = True
             except LogEnd:
                 pass
         if len(self.runs) > 0:
@@ -291,7 +361,7 @@ class Analyzer:
 
             self.print_summary()
         else:
-            print(f'{fg.white}No Profit-Taker runs found.\n'
+            print(f'{fg.white}No valid Profit-Taker runs found.\n'
                   f'Note that you have to be host throughout the entire run for it to show up as a valid run.')
 
         print(f'{rs.fg}Press ENTER to exit...')
@@ -314,6 +384,9 @@ class Analyzer:
                 self.print_summary()
             except RunAbort as abort:
                 require_heist_start = abort.require_heist_start
+            except BuggedRun as buggedRun:
+                print(color(str(buggedRun), fg.li_red))  # Prints reasons why the run failed
+                require_heist_start = True
 
     def read_run(self, log: Iterator[str], run_nr: int, require_heist_start=False) -> AbsRun:
         """
@@ -322,6 +395,8 @@ class Analyzer:
         :param run_nr: The number assigned to this run if it does not end up being aborted.
         :param require_heist_start: Indicate whether the start of this run indicates a previous run that was aborted.
         Necessary to properly initialize this run.
+        :raise RunAbort: The run was aborted, had a bugged kill sequence, or restarted before it was completed.
+        :raise BuggedRun: The run was completed but has missing information.
         :return: Absolute timings from the fight.
         """
         # Find heist load.
@@ -332,11 +407,14 @@ class Analyzer:
 
         for phase in [1, 2, 3, 4]:
             self.register_phase(log, run, phase)  # Adds information to run, including the start time
-        run.post_process()  # Apply shield phase corrections
+        run.post_process()  # Apply shield phase corrections & check for run integrity
 
         return run
 
-    def register_phase(self, log: Iterator[str], run: AbsRun, phase: int):
+    def register_phase(self, log: Iterator[str], run: AbsRun, phase: int) -> None:
+        """
+        Registers information to `self` for the current phase based on the information found in the logs.
+        """
         kill_sequence = 0
         while True:  # match exists for phases 1-3, kill_sequence for phase 4.
             try:

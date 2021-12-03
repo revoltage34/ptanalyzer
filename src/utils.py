@@ -1,3 +1,4 @@
+from math import isnan
 from typing import Iterable, Literal
 
 from sty import rs
@@ -19,6 +20,8 @@ def oxfordcomma(collection: Iterable[str]):
 
 
 def time_str(seconds: float, format_: Literal['brackets', 'units']) -> str:
+    if isnan(seconds):
+        return 'nan'
     if format_ == 'brackets':
         return f'[{int(seconds / 60)}:{int(seconds % 60):02d}]'
     elif format_ == 'units':
