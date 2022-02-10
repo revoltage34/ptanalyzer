@@ -10,6 +10,9 @@ Another timing method is called *fight duration*. This timing method starts when
 Example output:  
 ![image](https://user-images.githubusercontent.com/24490028/126034456-5551cfe2-1289-4ec3-bdeb-f37770bb8a3b.png)
 
+**Downloading:**
+* You can download the latest version by downloading the executable file [here](https://github.com/revoltage34/ptanalyzer/releases/latest).
+
 **Usage:**  
 * Either run the program to follow the game's log files and have your runs analyzed live.
 * Or drag a specific log file onto the .exe file.
