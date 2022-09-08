@@ -454,7 +454,8 @@ class Analyzer:
                     run.pylon_end[phase] = Analyzer.time_from_line(line)
                 return
             elif Constants.NICKNAME in line:  # Nickname
-                run.nickname = line.replace(',', '').split()[-2]
+                # Note: Replacing "î\x80\x80" has to be done since the Veilbreaker update botched names
+                run.nickname = line.replace(',', '').replace("î\x80\x80", "").split()[-2]
             elif Constants.ELEVATOR_EXIT in line:  # Elevator exit (start of speedrun timing)
                 if not run.heist_start:  # Only use the first time that the zone is left aka heist is started.
                     run.heist_start = Analyzer.time_from_line(line)
@@ -463,7 +464,8 @@ class Analyzer:
             elif Constants.HOST_MIGRATION in line:  # Host migration
                 raise RunAbort(require_heist_start=True)
             elif Constants.SQUAD_MEMBER in line:  # Squad member
-                run.squad_members.add(line.split()[-4])
+                # Note: Replacing "î\x80\x80" has to be done since the Veilbreaker update botched names
+                run.squad_members.add(line.replace("î\x80\x80", "").split()[-4])
 
     @staticmethod
     def time_from_line(line: str) -> float:

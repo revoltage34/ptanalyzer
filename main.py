@@ -17,7 +17,7 @@ import colorama
 from src.analyzer import Analyzer
 from src.utils import color
 
-VERSION = 'v2.5.1'
+VERSION = 'v2.5.2'
 
 
 def check_version():
