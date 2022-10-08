@@ -33,7 +33,6 @@ Linux users will have to export the folder that contains /Warframe/EE.log as LOC
 **Limitations:**
 1. The tool can only detect runs where you are the host.
 2. The tool can only detect shield changes, not the cause of it. This means it cannot differentiate between it being destroyed and it getting reset by an Amp or the time limit.
-3. The log shows when the shields change, but not when they are broken. The only way to know when the shield element changes, is to analyze when the next shield is put up. For the last shield in a shield phase this cannot be done, so the time is shown as **?s**. The time of the final shield is added to the first leg break of the subsequent armor phase.
-4. The tool won't show stats runs that are affected by the [pylon stacking bug](https://forums.warframe.com/topic/1272496-profit-taker-pylons-landing-on-top-of-each-other-prevent-the-bounty-from-completing/) or other bugs that mess with the logs.
+3. The tool won't show stats runs that are affected by the [pylon stacking bug](https://forums.warframe.com/topic/1272496-profit-taker-pylons-landing-on-top-of-each-other-prevent-the-bounty-from-completing/) or other bugs that mess with the logs.
 
 Feel free to contact me on Discord about this tool: **Iterniam#5829**
