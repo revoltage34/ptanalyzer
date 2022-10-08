@@ -2,7 +2,7 @@
 # Profit-Taker Analyzer by ReVoltage#3425   #
 # Rewritten by Iterniam#5829                #
 # https://github.com/revoltage34/ptanalyzer #
-# Requires Python 3.9                       #
+# Requires Python 3.10                      #
 #############################################
 import socket
 import traceback
@@ -17,7 +17,7 @@ import colorama
 from src.analyzer import Analyzer
 from src.utils import color
 
-VERSION = 'v2.5.2'
+VERSION = 'v2.6.0'
 
 
 def check_version():
