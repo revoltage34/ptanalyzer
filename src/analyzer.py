@@ -23,6 +23,12 @@ class Constants:
     HEIST_ABORT = 'SetReturnToLobbyLevelArgs: '
     ELEVATOR_EXIT = 'EidolonMP.lua: EIDOLONMP: Avatar left the zone'
     SHIELD_SWITCH = 'SwitchShieldVulnerability'
+    SHIELD_PHASE_ENDINGS = {1: 'GiveItem Queuing resource load for Transmission: '
+                               '/Lotus/Sounds/Dialog/FortunaOrbHeist/Business/DBntyFourInterPrTk0920TheBusiness',
+                            3: 'GiveItem Queuing resource load for Transmission: '
+                               '/Lotus/Sounds/Dialog/FortunaOrbHeist/Business/DBntyFourInterPrTk0890TheBusiness',
+                            4: 'GiveItem Queuing resource load for Transmission: '
+                               '/Lotus/Sounds/Dialog/FortunaOrbHeist/Business/DBntyFourSatelReal0930TheBusiness'}
     LEG_KILL = 'Leg freshly destroyed at part'
     BODY_VULNERABLE = 'Camper->StartVulnerable() - The Camper can now be damaged!'
     STATE_CHANGE = 'CamperHeistOrbFight.lua: Landscape - New State: '
@@ -143,7 +149,7 @@ class RelRun:
         if phase == 3 and self.shield_phases[3.5]:  # Print phase 3.5
             print(f'{fg.white} Extra shields:\t\t   {fg.li_yellow}'
                   f'{" | ".join((str(shield) for shield, _ in self.shield_phases[3.5]))}')
-        print('')  # to print an enter
+        print('')  # to print a newline
 
     def pretty_print_sum_of_parts(self):
         print(f'{fg.li_green}> Sum of parts {fg.li_cyan}{time_str(self.sum_of_parts, "brackets")}')
@@ -161,8 +167,8 @@ class AbsRun:
         self.squad_members: set[str] = set()
         self.heist_start = 0.0
         self.pt_found = 0.0
-        self.shield_phases: dict[float, list[tuple[DT, float]]] = defaultdict(list)
-        # phase -> list((type, absolute time))
+        self.shield_phases: dict[float, list[tuple[DT, float]]] = defaultdict(list)  # phase -> list((type, abs time))
+        self.shield_phase_endings: dict[int, float] = defaultdict(float)  # phase -> abs time
         self.legs: dict[int, list[float]] = defaultdict(list)  # phase -> list(absolute time)
         self.body_vuln: dict[int, float] = {}  # phase -> vuln-time
         self.body_kill: dict[int, float] = {}  # phase -> kill-time
@@ -185,7 +191,7 @@ class AbsRun:
         try:
             self.shield_phases[4].pop()
         except IndexError:
-            raise BuggedRun('No shields were recorded in phase 4.') from None
+            raise BuggedRun(['No shields were recorded in phase 4.']) from None
 
     def check_run_integrity(self) -> None:
         """
@@ -251,30 +257,32 @@ class AbsRun:
         body_dur = {}
         pylon_dur = {}
 
-        previous_value = self.pt_found
+        previous_timestamp = self.pt_found
         for phase in [1, 2, 3, 4]:
             if phase in [1, 3, 4]:  # Phases with shield phases
                 # Register the times and elements for the shields
                 for i in range(len(self.shield_phases[phase]) - 1):
                     shield_type, _ = self.shield_phases[phase][i]
                     _, shield_end = self.shield_phases[phase][i + 1]
-                    shield_phases[phase].append((shield_type, shield_end - previous_value))
-                    previous_value = shield_end
-                # The final shield of each phase doesn't have a time
-                shield_phases[phase].append((self.shield_phases[phase][-1][0], nan))
+                    shield_phases[phase].append((shield_type, shield_end - previous_timestamp))
+                    previous_timestamp = shield_end
+                # The time of the final shield is determined by the shield_end transmission
+                shield_phases[phase].append((self.shield_phases[phase][-1][0],
+                                             self.shield_phase_endings[phase] - previous_timestamp))
+                previous_timestamp = self.shield_phase_endings[phase]
             # Every phase has an armor phase
             for leg in self.legs[phase]:
-                legs[phase].append(leg - previous_value)
-                previous_value = leg
+                legs[phase].append(leg - previous_timestamp)
+                previous_timestamp = leg
             body_dur[phase] = self.body_kill[phase] - self.body_vuln[phase]
-            previous_value = self.body_kill[phase]
+            previous_timestamp = self.body_kill[phase]
 
             if phase in [1, 3]:  # Phases with pylon phases
                 pylon_dur[phase] = self.pylon_end[phase] - self.pylon_start[phase]
-                previous_value = self.pylon_end[phase]
+                previous_timestamp = self.pylon_end[phase]
 
             # Set phase duration
-            phase_durations[phase] = previous_value - self.heist_start
+            phase_durations[phase] = previous_timestamp - self.heist_start
 
         # Set phase 3.5 shields (possibly none on very fast runs)
         shield_phases[3.5] = [(shield, nan) for shield, _ in self.shield_phases[3.5]]
@@ -430,6 +438,8 @@ class Analyzer:
                 # The first shield can help determine whether to abort.
                 if self.follow_mode and len(run.shield_phases[1]) == 1:
                     print(f'{fg.white}First shield: {fg.li_cyan}{run.shield_phases[phase][0][0]}')
+            elif any(True for shield_end in Constants.SHIELD_PHASE_ENDINGS.values() if shield_end in line):
+                run.shield_phase_endings[phase] = Analyzer.time_from_line(line)
             elif Constants.LEG_KILL in line:  # Leg kill
                 run.legs[phase].append(Analyzer.time_from_line(line))
             elif Constants.BODY_VULNERABLE in line:  # Body vulnerable / phase 4 end
@@ -465,6 +475,7 @@ class Analyzer:
                 raise RunAbort(require_heist_start=True)
             elif Constants.SQUAD_MEMBER in line:  # Squad member
                 # Note: Replacing "î\x80\x80" has to be done since the Veilbreaker update botched names
+                # Note: The characters might represent the player's platform
                 run.squad_members.add(line.replace("î\x80\x80", "").split()[-4])
 
     @staticmethod
